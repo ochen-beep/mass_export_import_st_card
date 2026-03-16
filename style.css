@@ -1,35 +1,148 @@
+/* Export All Cards ZIP v1.3 */
+
+#export-cards-settings .inline-drawer-content {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+}
+
 #export-cards-settings .menu_button {
-    margin-top: 5px;
+    margin-top: 2px;
     cursor: pointer;
 }
 
-#export-cards-settings .inline-drawer-content {
+/* ─── Метки секций ─── */
+.export-cards-section-label {
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    opacity: 0.5;
+    margin-top: 2px;
+    padding: 0 2px;
+}
+
+/* ─── Политика дублей ─── */
+.export-cards-policy-row {
     display: flex;
-    flex-direction: column;
-    gap: 5px;
+    align-items: center;
+    gap: 8px;
+    padding: 0 2px;
 }
 
-#export-cards-settings .export-cards-status {
-    font-size: 0.85em;
-    padding: 3px 6px;
-    border-radius: 3px;
-    min-height: 1.2em;
+.export-cards-policy-row label {
+    font-size: 0.8em;
+    opacity: 0.7;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
-#export-cards-progress-bar {
-    display: none;
-    width: 100%;
-    height: 4px;
+.export-cards-policy-row select {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    background: var(--SmartThemeBlurTintColor, transparent);
+    color: inherit;
+    cursor: pointer;
+    flex: 1;
+    min-width: 0;
+}
+
+/* ─── Прогресс-строка ─── */
+.export-cards-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.export-cards-bar-wrap {
+    flex: 1;
+    height: 5px;
     background: var(--SmartThemeBodyColor, #333);
-    border-radius: 2px;
-    margin-top: 5px;
+    border-radius: 99px;
     overflow: hidden;
+    opacity: 0.6;
 }
 
-#export-cards-progress-fill {
+.export-cards-bar-fill {
     height: 100%;
     width: 0%;
-    background: var(--SmartThemeQuoteColor, #5cb85c);
-    border-radius: 2px;
-    transition: width 0.3s ease;
+    border-radius: 99px;
+    transition: width 0.25s ease;
+}
+
+.export-cards-bar-fill.green {
+    background: var(--SmartThemeQuoteColor, #4caf7d);
+}
+
+.export-cards-bar-fill.blue {
+    background: var(--SmartThemeUserMesBlurTintColor, #5b9bd5);
+}
+
+.export-cards-counter {
+    font-size: 0.75em;
+    opacity: 0.6;
+    white-space: nowrap;
+    min-width: 50px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ─── Статус ─── */
+.export-cards-status {
+    font-size: 0.8em;
+    padding: 1px 2px;
+    min-height: 1.1em;
+    word-break: break-word;
+    opacity: 0.85;
+}
+
+/* ─── Кнопка скачать лог ─── */
+.export-cards-log-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    margin-top: 2px;
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    background: transparent;
+    color: inherit;
+    font-size: 0.78em;
+    opacity: 0.7;
+    cursor: pointer;
+    width: fit-content;
+    transition: opacity 0.15s;
+}
+
+.export-cards-log-btn:hover {
+    opacity: 1;
+}
+
+.export-cards-log-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e2584a;
+    flex-shrink: 0;
+}
+
+/* ─── Кнопка отмены ─── */
+.export-cards-cancel {
+    opacity: 0.75;
+}
+
+.export-cards-cancel:hover {
+    opacity: 1;
+}
+
+/* ─── Разделитель ─── */
+.export-cards-divider {
+    border: none;
+    border-top: 1px solid var(--SmartThemeBorderColor, #555);
+    opacity: 0.2;
+    margin: 6px 0 4px;
 }
