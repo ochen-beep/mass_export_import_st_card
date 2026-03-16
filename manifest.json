@@ -1,12 +1,12 @@
 {
-    "display_name": "Export All Cards ZIP",
+    "display_name": "Export / Import Cards ZIP",
     "loading_order": 1,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "aceenvw",
-    "version": "1.0.0",
+    "version": "1.3.0",
     "homePage": "",
     "auto_update": true
 }
