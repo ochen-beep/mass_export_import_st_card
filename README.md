@@ -26,16 +26,6 @@ Both operations can be cancelled mid-way. If any cards fail, a **Download log** 
 | **Export** | Adds ` (2)`, ` (3)` … | Skips the card | — |
 | **Import** | Renames incoming card | Skips if name exists | Always imports |
 
-## Changelog
-
-### v1.3.1
-- Fix: cards now actually save — missing `file_type` field was causing all imports to fail with HTTP 400
-- Fix: character list now refreshes correctly after import
-
-### v1.3.0
-- Added Import from ZIP
-- Added cancellation and error logs
-
 ## Credits
 
 Original extension by **aceenvw**
