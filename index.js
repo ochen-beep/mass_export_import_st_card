@@ -1,22 +1,147 @@
-// Export / Import Cards ZIP v1.4
+// Export / Import Cards ZIP v1.5
 const MODULE_NAME = 'export_all_cards_zip';
 
-let abortExport    = false;
-let abortImport    = false;
-let jsZipLoaded    = false;
-let jsZipLoadPromise = null; // кешируем промис чтобы loadJSZip была идемпотентной
+let abortExport      = false;
+let abortImport      = false;
+let jsZipLoaded      = false;
+let jsZipLoadPromise = null;
 let exportInProgress = false;
 let importInProgress = false;
 
-const MAX_ZIP_WARN_MB = 200; // предупреждать если ZIP крупнее этого порога
+const MAX_ZIP_WARN_MB = 200;
 
-// ═══════════════════════════════════
-// ─── JSZip ───
-// ═══════════════════════════════════
-// FIX: кешируем промис загрузки — повторный вызов до завершения вернёт тот же промис,
-//      а не запустит второй <script> (что ломало первый onload навсегда).
-// FIX: таймаут 10 с — если CDN завис (не ошибка, а молчит), промис всё равно resolve(false),
-//      интерфейс не зависает навечно.
+// ═══════════════════════════════════════════════════════════
+// ─── i18n ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+//
+// Определяем язык один раз при загрузке расширения.
+// Приоритет:
+//   1. localStorage['language'] — явный выбор пользователя в настройках ST
+//   2. document.documentElement.lang — ST сам выставляет его в initLocales()
+//   3. navigator.language — язык браузера как последний fallback
+//
+// Поддерживаются: ru-ru → русский, всё остальное → английский (по умолчанию).
+//
+const _stLang = (
+    localStorage.getItem('language')
+    || document.documentElement.lang
+    || navigator.language
+    || 'en'
+).toLowerCase();
+
+const IS_RU = _stLang.startsWith('ru');
+
+/**
+ * Словарь переводов.
+ * Ключи — строковые идентификаторы.
+ * Значения — объект { en, ru }.
+ * Поддержка плейсхолдеров: {0}, {1}, ...
+ */
+const STRINGS = {
+    // ── Заголовок панели ──
+    panelTitle:             { en: 'Export / Import Cards ZIP', ru: 'Экспорт / Импорт карточек ZIP' },
+
+    // ── Секции ──
+    sectionExport:          { en: 'Export', ru: 'Экспорт' },
+    sectionImport:          { en: 'Import', ru: 'Импорт' },
+
+    // ── Политика дублей ──
+    onDuplicate:            { en: 'On duplicate:', ru: 'Дубли:' },
+    policyRename:           { en: 'Auto-rename', ru: 'Переименовать' },
+    policySkip:             { en: 'Skip', ru: 'Пропустить' },
+    policyAnyway:           { en: 'Import anyway', ru: 'Импортировать всё равно' },
+
+    // ── Кнопки ──
+    btnExport:              { en: 'Export All as ZIP', ru: 'Экспортировать всё в ZIP' },
+    btnCancelExport:        { en: 'Cancel Export', ru: 'Отменить экспорт' },
+    btnImport:              { en: 'Import from ZIP', ru: 'Импортировать из ZIP' },
+    btnCancelImport:        { en: 'Cancel Import', ru: 'Отменить импорт' },
+    btnDownloadExportLog:   { en: 'Download export log', ru: 'Скачать лог экспорта' },
+    btnDownloadImportLog:   { en: 'Download import log', ru: 'Скачать лог импорта' },
+
+    // ── Диалоги подтверждения ──
+    confirmExportTitle:     { en: 'Export characters', ru: 'Экспорт персонажей' },
+    confirmExportBody:      { en: 'Export {0} character(s) as PNG into a ZIP?\n\nDuplicate names: {1}.', ru: 'Экспортировать {0} персонаж(ей) как PNG в ZIP?\n\nДубли: {1}.' },
+    policyLabelRename:      { en: 'auto-rename', ru: 'переименование' },
+    policyLabelSkip:        { en: 'skip', ru: 'пропуск' },
+
+    confirmImportTitle:     { en: 'Import characters', ru: 'Импорт персонажей' },
+    confirmImportBody:      { en: 'Found {0} PNG file(s) in the archive.', ru: 'Найдено {0} PNG файл(ов) в архиве.' },
+    confirmImportConflicts: { en: '\n\n{0} name conflict(s) found.\nPolicy: {1}.', ru: '\n\nКонфликтов имён: {0}.\nПолитика: {1}.' },
+    confirmImportProceed:   { en: '\n\nProceed with import?', ru: '\n\nПродолжить импорт?' },
+    policyLabelAnyway:      { en: 'import anyway (creates duplicate)', ru: 'импорт с дублем' },
+
+    confirmLargeTitle:      { en: 'Large archive', ru: 'Большой архив' },
+    confirmLargeBody:       { en: 'This ZIP is {0} MB.\nLoading it may use a lot of RAM and slow down the device.\n\nContinue?', ru: 'Размер ZIP: {0} МБ.\nЗагрузка может занять много памяти и замедлить устройство.\n\nПродолжить?' },
+
+    // ── Статусы ──
+    statusLoadingZip:       { en: 'Loading ZIP library...', ru: 'Загрузка библиотеки ZIP...' },
+    statusGeneratingZip:    { en: 'Generating ZIP...', ru: 'Создание ZIP...' },
+    statusReadingZip:       { en: 'Reading ZIP...', ru: 'Чтение ZIP...' },
+    statusExporting:        { en: 'Exporting {0}/{1}: {2}', ru: 'Экспорт {0}/{1}: {2}' },
+    statusSkippedDup:       { en: 'Skipped {0}/{1}: {2} (duplicate)', ru: 'Пропущен {0}/{1}: {2} (дубль)' },
+    statusImporting:        { en: 'Importing {0}/{1}: {2}', ru: 'Импорт {0}/{1}: {2}' },
+    statusCancelling:       { en: 'Cancelling... (finishing current)', ru: 'Отмена... (завершаем текущий)' },
+    statusCancelled:        { en: 'Export cancelled.', ru: 'Экспорт отменён.' },
+    statusNoPng:            { en: 'No PNG files found.', ru: 'PNG файлы не найдены.' },
+    statusErrZipLib:        { en: 'Error: failed to load ZIP library.', ru: 'Ошибка: не удалось загрузить ZIP библиотеку.' },
+    statusErrZipRead:       { en: 'Error: failed to read ZIP.', ru: 'Ошибка: не удалось прочитать ZIP.' },
+    statusErrZipGen:        { en: 'Error: ZIP generation failed.', ru: 'Ошибка: не удалось создать ZIP.' },
+    statusErrNothing:       { en: 'Error: nothing exported.', ru: 'Ошибка: ничего не экспортировано.' },
+
+    statusDoneExport:       { en: 'Done. {0} exported{1}{2}.', ru: 'Готово. Экспортировано: {0}{1}{2}.' },
+    statusDoneExportFailed: { en: ', {0} failed', ru: ', ошибок: {0}' },
+    statusDoneExportSkip:   { en: ', {0} skipped', ru: ', пропущено: {0}' },
+
+    statusDoneImport:       { en: 'Done. {0} imported{1}{2}.', ru: 'Готово. Импортировано: {0}{1}{2}.' },
+    statusDoneImportFailed: { en: ', {0} failed', ru: ', ошибок: {0}' },
+    statusDoneImportSkip:   { en: ', {0} skipped', ru: ', пропущено: {0}' },
+
+    // ── Toastr ──
+    toastrNoChars:          { en: 'No characters found.', ru: 'Персонажи не найдены.' },
+    toastrSelectZip:        { en: 'Please select a .zip file.', ru: 'Выберите .zip файл.' },
+    toastrNoPng:            { en: 'No PNG files found in ZIP.', ru: 'В ZIP нет PNG файлов.' },
+    toastrZipLibFail:       { en: 'Failed to load JSZip. Check internet connection.', ru: 'Не удалось загрузить JSZip. Проверьте интернет-соединение.' },
+    toastrZipReadFail:      { en: 'Failed to read ZIP. Is it a valid archive?', ru: 'Не удалось прочитать ZIP. Это корректный архив?' },
+    toastrZipGenFail:       { en: 'Failed to generate ZIP.', ru: 'Не удалось создать ZIP.' },
+    toastrNothingExported:  { en: 'No characters exported. Check console (F12).', ru: 'Ничего не экспортировано. Проверьте консоль (F12).' },
+    toastrExportDone:       { en: 'Exported {0}/{1} character(s). ZIP: {2} MB.', ru: 'Экспортировано {0}/{1} персонаж(ей). ZIP: {2} МБ.' },
+    toastrExportSkipped:    { en: ' {0} skipped.', ru: ' Пропущено: {0}.' },
+    toastrExportFailed:     { en: ' {0} failed.', ru: ' Ошибок: {0}.' },
+    toastrImportDone:       { en: 'Imported {0}/{1} character(s).', ru: 'Импортировано {0}/{1} персонаж(ей).' },
+    toastrImportSkipped:    { en: ' {0} skipped.', ru: ' Пропущено: {0}.' },
+    toastrImportFailed:     { en: ' {0} failed.', ru: ' Ошибок: {0}.' },
+    toastrCancelledExport:  { en: 'Export cancelled. {0}/{1} exported.', ru: 'Экспорт отменён. Экспортировано {0}/{1}.' },
+    toastrCancelledImport:  { en: 'Import cancelled. {0}/{1} imported.', ru: 'Импорт отменён. Импортировано {0}/{1}.' },
+
+    // ── Ошибки в лог ──
+    errNoAvatar:            { en: '{0}: no avatar URL', ru: '{0}: нет URL аватара' },
+    errExportFailed:        { en: '{0}: export failed', ru: '{0}: ошибка экспорта' },
+    errSkippedDup:          { en: '{0}: skipped (duplicate name)', ru: '{0}: пропущен (дубль имени)' },
+    errReadZip:             { en: '{0}: failed to read from ZIP', ru: '{0}: не удалось прочитать из ZIP' },
+    errTooSmall:            { en: '{0}: file too small or empty ({1} bytes)', ru: '{0}: файл слишком мал или пуст ({1} байт)' },
+    errAlreadyExists:       { en: '{0}: skipped (already exists)', ru: '{0}: пропущен (уже существует)' },
+};
+
+/**
+ * Возвращает переведённую строку с подстановкой плейсхолдеров {0}, {1}, ...
+ * @param {keyof typeof STRINGS} key
+ * @param {...string|number} args
+ * @returns {string}
+ */
+function t(key, ...args) {
+    const entry = STRINGS[key];
+    if (!entry) {
+        console.warn(`[${MODULE_NAME}] Missing i18n key: "${key}"`);
+        return key;
+    }
+    let str = IS_RU ? (entry.ru || entry.en) : entry.en;
+    return str.replace(/\{(\d+)\}/g, (_, i) => args[i] ?? '');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ─── JSZip ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 async function loadJSZip() {
     if (jsZipLoaded && typeof window.JSZip === 'function') return true;
     if (jsZipLoadPromise) return jsZipLoadPromise;
@@ -32,29 +157,17 @@ async function loadJSZip() {
             resolve(false);
         }, 10000);
 
-        script.onload = () => {
-            clearTimeout(timer);
-            jsZipLoaded = true;
-            resolve(true);
-        };
-        script.onerror = () => {
-            clearTimeout(timer);
-            console.error(`[${MODULE_NAME}] Failed to load JSZip`);
-            resolve(false);
-        };
-
+        script.onload = () => { clearTimeout(timer); jsZipLoaded = true; resolve(true); };
+        script.onerror = () => { clearTimeout(timer); console.error(`[${MODULE_NAME}] Failed to load JSZip`); resolve(false); };
         document.head.appendChild(script);
-    }).finally(() => {
-        // сбрасываем после завершения — следующий вызов сможет попробовать снова при необходимости
-        jsZipLoadPromise = null;
-    });
+    }).finally(() => { jsZipLoadPromise = null; });
 
     return jsZipLoadPromise;
 }
 
-// ═══════════════════════════════════
-// ─── Заголовки ST ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── Заголовки ST ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 function getHeaders() {
     try {
         if (typeof window.getRequestHeaders === 'function') return window.getRequestHeaders();
@@ -66,32 +179,28 @@ function getHeaders() {
     return { 'Content-Type': 'application/json' };
 }
 
-// ═══════════════════════════════════
-// ─── Утилиты ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── Утилиты ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 function safeName(name) {
     return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, ' ').trim() || 'unnamed';
 }
 
-// FIX: showConfirm использует ST Popup API (работает на мобильных, не блокирует event loop),
-//      с graceful fallback на нативный confirm() для старых версий ST.
 async function showConfirm(title, text) {
     try {
         const ctx = SillyTavern.getContext();
-        // Popup.show.confirm доступен в современных версиях ST
         if (typeof ctx?.Popup?.show?.confirm === 'function') {
             return await ctx.Popup.show.confirm(title, text);
         }
     } catch (e) {
         console.warn(`[${MODULE_NAME}] Popup fallback:`, e);
     }
-    // Fallback: нативный confirm (синхронный, может блокироваться на мобильных)
     return confirm(`${title}\n\n${text}`);
 }
 
-// ═══════════════════════════════════
-// ─── UI helpers ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── UI helpers ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 function el(id) { return document.getElementById(id); }
 
 function setStatus(prefix, text, isError = false) {
@@ -118,16 +227,14 @@ function showLogButton(prefix, errors) {
     if (errors && errors.length > 0) {
         btn.style.display = '';
         btn.dataset.log = errors.join('\n');
-        btn.querySelector('.export-cards-log-count').textContent =
-            `(${errors.length} error${errors.length > 1 ? 's' : ''})`;
+        const countEl = btn.querySelector('.export-cards-log-count');
+        if (countEl) countEl.textContent = `(${errors.length} error${errors.length > 1 ? 's' : ''})`;
     } else {
         btn.style.display = 'none';
     }
 }
 
-// ─── Скачивание файлов ───
-// FIX: на Android Chromium blob URL через a.click() часто открывает файл в браузере
-//      вместо скачивания. Используем data URL через FileReader — более совместимо.
+// ─── Скачивание файлов ──────────────────────────────────────
 function downloadViaDataUrl(blob, filename) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -140,7 +247,7 @@ function downloadViaDataUrl(blob, filename) {
             document.body.removeChild(a);
             resolve();
         };
-        reader.onerror = () => resolve(); // молча игнорируем, fallback ниже
+        reader.onerror = () => resolve();
         reader.readAsDataURL(blob);
     });
 }
@@ -149,7 +256,6 @@ const isMobileChromium = /Android.*Chrome|Chrome.*Android/i.test(navigator.userA
 
 async function downloadBlob(blob, filename) {
     if (isMobileChromium) {
-        // На Android data URL скачивается надёжнее чем blob URL
         await downloadViaDataUrl(blob, filename);
         return;
     }
@@ -164,13 +270,10 @@ async function downloadBlob(blob, filename) {
 }
 
 async function downloadText(text, filename) {
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    await downloadBlob(blob, filename);
+    await downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename);
 }
 
-// ─── Сброс UI ───
-// FIX: убран вызов setStatus('') — финальный статус 'Done. N exported' больше не затирается.
-//      Сбрасываются только флаги, кнопки и прогресс-бар.
+// ─── Сброс UI ───────────────────────────────────────────────
 function resetExportUI() {
     exportInProgress = false;
     abortExport      = false;
@@ -205,7 +308,7 @@ function resetImportUI() {
     // статус намеренно НЕ сбрасываем — пользователь должен видеть итог
 }
 
-// ─── Уникальное имя (для auto-rename) ───
+// ─── Уникальное имя ─────────────────────────────────────────
 function getUniqueName(usedNames, baseName) {
     let name = baseName;
     let i = 2;
@@ -214,9 +317,9 @@ function getUniqueName(usedNames, baseName) {
     return name;
 }
 
-// ═══════════════════════════════════
-// ─── API: экспорт одного персонажа ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── API: экспорт одного персонажа ──────────────────────────
+// ═══════════════════════════════════════════════════════════
 async function fetchCharacterPng(avatarUrl) {
     try {
         const r = await fetch('/api/characters/export', {
@@ -224,10 +327,7 @@ async function fetchCharacterPng(avatarUrl) {
             headers: getHeaders(),
             body: JSON.stringify({ format: 'png', avatar_url: avatarUrl }),
         });
-        if (!r.ok) {
-            console.warn(`[${MODULE_NAME}] export HTTP ${r.status} for ${avatarUrl}`);
-            return null;
-        }
+        if (!r.ok) { console.warn(`[${MODULE_NAME}] export HTTP ${r.status} for ${avatarUrl}`); return null; }
         const blob = await r.blob();
         return blob && blob.size > 0 ? blob : null;
     } catch (e) {
@@ -236,9 +336,9 @@ async function fetchCharacterPng(avatarUrl) {
     }
 }
 
-// ═══════════════════════════════════
-// ─── API: импорт одного PNG ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── API: импорт одного PNG ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 async function importCharacterPng(filename, blob) {
     try {
         const formData = new FormData();
@@ -266,45 +366,40 @@ async function importCharacterPng(filename, blob) {
     }
 }
 
-// ═══════════════════════════════════
-// ─── ЭКСПОРТ ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── ЭКСПОРТ ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 async function exportAllAsZip() {
-    // FIX: exportInProgress = true сразу, ДО любого await,
-    //      иначе двойной быстрый клик запускает два параллельных экспорта.
     if (exportInProgress) return;
     exportInProgress = true;
     abortExport = false;
 
-    const ctx = SillyTavern.getContext();
+    const ctx        = SillyTavern.getContext();
     const characters = ctx?.characters;
     if (!characters || characters.length === 0) {
-        toastr.warning('No characters found.');
+        toastr.warning(t('toastrNoChars'));
         exportInProgress = false;
         return;
     }
 
     const duplicatePolicy = el('export-cards-duplicate-policy')?.value || 'rename';
-    const policyLabel = duplicatePolicy === 'rename' ? 'auto-rename' : 'skip';
+    const policyLabel     = duplicatePolicy === 'rename' ? t('policyLabelRename') : t('policyLabelSkip');
     const confirmed = await showConfirm(
-        'Export characters',
-        `Export ${characters.length} character(s) as PNG into a ZIP?\n\nDuplicate names: ${policyLabel}.`
+        t('confirmExportTitle'),
+        t('confirmExportBody', characters.length, policyLabel)
     );
-    if (!confirmed) {
-        exportInProgress = false;
-        return;
-    }
+    if (!confirmed) { exportInProgress = false; return; }
 
     el('export-cards-btn')?.classList.add('disabled');
     $('#export-cards-cancel-btn').show();
     showLogButton('export-cards', null);
     setStatus('export-cards', '');
 
-    setStatus('export-cards', 'Loading ZIP library...');
+    setStatus('export-cards', t('statusLoadingZip'));
     if (!await loadJSZip()) {
-        toastr.error('Failed to load JSZip. Check internet connection.');
+        toastr.error(t('toastrZipLibFail'));
         resetExportUI();
-        setStatus('export-cards', 'Error: failed to load ZIP library.', true);
+        setStatus('export-cards', t('statusErrZipLib'), true);
         return;
     }
 
@@ -316,7 +411,7 @@ async function exportAllAsZip() {
 
     for (let i = 0; i < total; i++) {
         if (abortExport) {
-            toastr.warning(`Export cancelled. ${exported}/${total} exported.`);
+            toastr.warning(t('toastrCancelledExport', exported, total));
             break;
         }
 
@@ -324,24 +419,24 @@ async function exportAllAsZip() {
         const charName = char.name || 'unnamed';
 
         if (!char.avatar) {
-            errors.push(`${charName}: no avatar URL`);
+            errors.push(t('errNoAvatar', charName));
             failed++;
             continue;
         }
 
-        const sanitized  = safeName(charName);
+        const sanitized   = safeName(charName);
         const isDuplicate = usedNames.has(sanitized.toLowerCase());
 
         if (isDuplicate && duplicatePolicy === 'skip') {
-            errors.push(`${charName}: skipped (duplicate name)`);
+            errors.push(t('errSkippedDup', charName));
             skipped++;
             setProgress('export-cards', i + 1, total);
-            setStatus('export-cards', `Skipped ${i + 1}/${total}: ${charName} (duplicate)`);
+            setStatus('export-cards', t('statusSkippedDup', i + 1, total, charName));
             continue;
         }
 
         setProgress('export-cards', i + 1, total);
-        setStatus('export-cards', `Exporting ${i + 1}/${total}: ${charName}`);
+        setStatus('export-cards', t('statusExporting', i + 1, total, charName));
 
         const blob = await fetchCharacterPng(char.avatar);
         if (blob) {
@@ -349,11 +444,8 @@ async function exportAllAsZip() {
             zip.file(`${uniqueName}.png`, blob);
             exported++;
         } else {
-            errors.push(`${charName}: export failed`);
+            errors.push(t('errExportFailed', charName));
             failed++;
-            // FIX: резервируем имя только для реально существующих файлов.
-            // Провалившийся персонаж не занимает слот — следующий тёзка получит оригинальное имя.
-            // (Убран usedNames.add здесь — счётчики будут корректны)
         }
 
         if (i < total - 1) await new Promise(r => setTimeout(r, 80));
@@ -361,15 +453,15 @@ async function exportAllAsZip() {
 
     if (abortExport && exported === 0) {
         resetExportUI();
-        setStatus('export-cards', 'Export cancelled.');
+        setStatus('export-cards', t('statusCancelled'));
         return;
     }
 
     if (exported === 0) {
-        toastr.error('No characters exported. Check console (F12).');
+        toastr.error(t('toastrNothingExported'));
         showLogButton('export-cards', errors);
         resetExportUI();
-        setStatus('export-cards', 'Error: nothing exported.', true);
+        setStatus('export-cards', t('statusErrNothing'), true);
         return;
     }
 
@@ -378,9 +470,7 @@ async function exportAllAsZip() {
         console.warn(`[${MODULE_NAME}] Export errors:`, errors);
     }
 
-    // FIX: убран setProgress('export-cards', 0, total) перед generateAsync —
-    //      бар больше не прыгает с 100% обратно в 0%.
-    setStatus('export-cards', 'Generating ZIP...');
+    setStatus('export-cards', t('statusGeneratingZip'));
 
     let zipBlob;
     try {
@@ -390,10 +480,10 @@ async function exportAllAsZip() {
         );
     } catch (e) {
         console.error(`[${MODULE_NAME}] ZIP generation failed:`, e);
-        toastr.error('Failed to generate ZIP.');
+        toastr.error(t('toastrZipGenFail'));
         showLogButton('export-cards', errors);
         resetExportUI();
-        setStatus('export-cards', 'Error: ZIP generation failed.', true);
+        setStatus('export-cards', t('statusErrZipGen'), true);
         return;
     }
 
@@ -401,30 +491,30 @@ async function exportAllAsZip() {
     const sizeMB = (zipBlob.size / 1024 / 1024).toFixed(1);
     await downloadBlob(zipBlob, `all_characters_${ts}.zip`);
 
-    const doneMsg = `Done. ${exported} exported${failed > 0 ? `, ${failed} failed` : ''}${skipped > 0 ? `, ${skipped} skipped` : ''}.`;
-    let toastrMsg = `Exported ${exported}/${total} character(s). ZIP: ${sizeMB} MB.`;
-    if (skipped > 0) toastrMsg += ` ${skipped} skipped.`;
-    if (failed  > 0) toastrMsg += ` ${failed} failed.`;
+    const failedPart  = failed  > 0 ? t('statusDoneExportFailed', failed)  : '';
+    const skippedPart = skipped > 0 ? t('statusDoneExportSkip',   skipped) : '';
+    const doneMsg     = t('statusDoneExport', exported, failedPart, skippedPart);
+
+    let toastrMsg = t('toastrExportDone', exported, total, sizeMB);
+    if (skipped > 0) toastrMsg += t('toastrExportSkipped', skipped);
+    if (failed  > 0) toastrMsg += t('toastrExportFailed',  failed);
     toastr.success(toastrMsg);
 
-    // FIX: сначала resetExportUI (сбрасывает флаги/кнопки), затем setStatus —
-    //      иначе resetExportUI затирал бы только что выставленный статус.
     showLogButton('export-cards', errors.length > 0 ? errors : null);
     resetExportUI();
     setStatus('export-cards', doneMsg);
 }
 
-// ═══════════════════════════════════
-// ─── ИМПОРТ ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── ИМПОРТ ─────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 async function importFromZip(file) {
-    // FIX: importInProgress = true сразу — нет race condition при двойном вызове.
     if (importInProgress) return;
     importInProgress = true;
     abortImport = false;
 
     if (!file?.name.toLowerCase().endsWith('.zip')) {
-        toastr.warning('Please select a .zip file.');
+        toastr.warning(t('toastrSelectZip'));
         importInProgress = false;
         return;
     }
@@ -434,14 +524,9 @@ async function importFromZip(file) {
     showLogButton('import-cards', null);
     setStatus('import-cards', '');
 
-    // FIX: OOM-защита — предупреждаем если архив очень большой.
-    //      На слабых устройствах (Android/Termux) file.arrayBuffer() может упасть без ошибки.
     if (file.size > MAX_ZIP_WARN_MB * 1024 * 1024) {
         const sizeMB = (file.size / 1024 / 1024).toFixed(0);
-        const ok = await showConfirm(
-            'Large archive',
-            `This ZIP is ${sizeMB} MB.\nLoading it may use a lot of RAM and slow down the device.\n\nContinue?`
-        );
+        const ok = await showConfirm(t('confirmLargeTitle'), t('confirmLargeBody', sizeMB));
         if (!ok) {
             resetImportUI();
             setStatus('import-cards', '');
@@ -449,23 +534,23 @@ async function importFromZip(file) {
         }
     }
 
-    setStatus('import-cards', 'Loading ZIP library...');
+    setStatus('import-cards', t('statusLoadingZip'));
     if (!await loadJSZip()) {
-        toastr.error('Failed to load JSZip. Check internet connection.');
+        toastr.error(t('toastrZipLibFail'));
         resetImportUI();
-        setStatus('import-cards', 'Error: failed to load ZIP library.', true);
+        setStatus('import-cards', t('statusErrZipLib'), true);
         return;
     }
 
     let zip;
     try {
-        setStatus('import-cards', 'Reading ZIP...');
+        setStatus('import-cards', t('statusReadingZip'));
         zip = await JSZip.loadAsync(await file.arrayBuffer());
     } catch (e) {
         console.error(`[${MODULE_NAME}] Read ZIP failed:`, e);
-        toastr.error('Failed to read ZIP. Is it a valid archive?');
+        toastr.error(t('toastrZipReadFail'));
         resetImportUI();
-        setStatus('import-cards', 'Error: failed to read ZIP.', true);
+        setStatus('import-cards', t('statusErrZipRead'), true);
         return;
     }
 
@@ -477,37 +562,36 @@ async function importFromZip(file) {
     );
 
     if (pngFiles.length === 0) {
-        toastr.warning('No PNG files found in ZIP.');
+        toastr.warning(t('toastrNoPng'));
         resetImportUI();
-        setStatus('import-cards', 'No PNG files found.');
+        setStatus('import-cards', t('statusNoPng'));
         return;
     }
 
-    // ─── Сбор существующих имён для проверки дублей ───
     const ctx = SillyTavern.getContext();
     const existingNames = new Set(
         (ctx?.characters || []).map(c => (c.name || '').toLowerCase().trim())
     );
 
-    // ─── Подсчёт дублей для информирования ───
     const duplicatePolicy = el('import-cards-duplicate-policy')?.value || 'rename';
     const duplicateCount  = pngFiles.filter(([name]) => {
         const charName = name.split('/').pop().replace(/\.png$/i, '').toLowerCase().trim();
         return existingNames.has(charName);
     }).length;
 
-    let confirmMsg = `Found ${pngFiles.length} PNG file(s) in the archive.`;
-    if (duplicateCount > 0) {
-        const policyLabel = {
-            rename: 'auto-rename',
-            skip:   'skip',
-            anyway: 'import anyway (creates duplicate)',
-        };
-        confirmMsg += `\n\n${duplicateCount} name conflict(s) found.\nPolicy: ${policyLabel[duplicatePolicy] || duplicatePolicy}.`;
-    }
-    confirmMsg += '\n\nProceed with import?';
+    const policyLabels = {
+        rename: t('policyLabelRename'),
+        skip:   t('policyLabelSkip'),
+        anyway: t('policyLabelAnyway'),
+    };
 
-    if (!await showConfirm('Import characters', confirmMsg)) {
+    let confirmMsg = t('confirmImportBody', pngFiles.length);
+    if (duplicateCount > 0) {
+        confirmMsg += t('confirmImportConflicts', duplicateCount, policyLabels[duplicatePolicy] || duplicatePolicy);
+    }
+    confirmMsg += t('confirmImportProceed');
+
+    if (!await showConfirm(t('confirmImportTitle'), confirmMsg)) {
         resetImportUI();
         setStatus('import-cards', '');
         return;
@@ -520,7 +604,7 @@ async function importFromZip(file) {
 
     for (let i = 0; i < total; i++) {
         if (abortImport) {
-            toastr.warning(`Import cancelled. ${imported}/${total} imported.`);
+            toastr.warning(t('toastrCancelledImport', imported, total));
             break;
         }
 
@@ -531,43 +615,34 @@ async function importFromZip(file) {
         const sanitized     = safeName(charName);
 
         setProgress('import-cards', i + 1, total);
-        setStatus('import-cards', `Importing ${i + 1}/${total}: ${charName}`);
+        setStatus('import-cards', t('statusImporting', i + 1, total, charName));
 
-        // ─── Проверка дубля ───
         if (existingNames.has(charNameLower) && duplicatePolicy === 'skip') {
-            errors.push(`${charName}: skipped (already exists)`);
+            errors.push(t('errAlreadyExists', charName));
             skipped++;
             continue;
         }
 
-        // ─── Чтение файла из ZIP ───
         let blob;
         try {
             blob = new Blob([await entry.async('arraybuffer')], { type: 'image/png' });
         } catch (e) {
-            errors.push(`${charName}: failed to read from ZIP`);
+            errors.push(t('errReadZip', charName));
             failed++;
             continue;
         }
 
-        // FIX: маленький файл — это ошибка чтения, не «пропуск по политике».
-        //      Было skipped++, теперь failed++ — счётчики и логи корректны.
         if (!blob || blob.size < 100) {
-            errors.push(`${charName}: file too small or empty (${blob?.size ?? 0} bytes)`);
+            errors.push(t('errTooSmall', charName, blob?.size ?? 0));
             failed++;
             continue;
         }
 
-        // ─── Определяем финальное имя файла ───
         let importFilename = filename;
         if (duplicatePolicy === 'rename' && existingNames.has(charNameLower)) {
-            // FIX: для rename используем safeName(charName) как базу — консистентно с usedNames.
             const newName  = getUniqueName(usedNames, sanitized);
             importFilename = `${newName}.png`;
         } else {
-            // FIX: резервируем имя только если файл реально будет импортирован.
-            //      Ранее имя добавлялось здесь, до проверки result.ok — если импорт падал,
-            //      следующий тёзка получал суффикс (2) хотя первый не был создан.
             usedNames.add(charNameLower);
         }
 
@@ -576,7 +651,6 @@ async function importFromZip(file) {
             imported++;
             existingNames.add(charNameLower);
         } else {
-            // FIX: имя не было создано — убираем из usedNames чтобы следующий тёзка мог занять слот.
             usedNames.delete(charNameLower);
             errors.push(`${charName}: ${result.reason}`);
             failed++;
@@ -585,10 +659,6 @@ async function importFromZip(file) {
         if (i < total - 1) await new Promise(r => setTimeout(r, 100));
     }
 
-    // ─── Обновляем список персонажей в UI ───
-    // FIX: исправлен ключ ctx2.event → ctx2.event_types
-    //      В getContext() поле называется event_types, не event.
-    //      Раньше условие было всегда false → список не обновлялся без F5.
     if (imported > 0) {
         try {
             const ctx2 = SillyTavern.getContext();
@@ -602,54 +672,54 @@ async function importFromZip(file) {
 
     if (errors.length > 0) console.warn(`[${MODULE_NAME}] Import errors:`, errors);
 
-    const doneMsg = `Done. ${imported} imported${skipped > 0 ? `, ${skipped} skipped` : ''}${failed > 0 ? `, ${failed} failed` : ''}.`;
-    let toastrMsg = `Imported ${imported}/${total} character(s).`;
-    if (skipped > 0) toastrMsg += ` ${skipped} skipped.`;
-    if (failed  > 0) toastrMsg += ` ${failed} failed.`;
+    const failedPart  = failed  > 0 ? t('statusDoneImportFailed', failed)  : '';
+    const skippedPart = skipped > 0 ? t('statusDoneImportSkip',   skipped) : '';
+    const doneMsg     = t('statusDoneImport', imported, failedPart, skippedPart);
 
-    if (imported > 0)     toastr.success(toastrMsg);
-    else if (failed > 0)  toastr.error(toastrMsg);
-    else                  toastr.warning(toastrMsg);
+    let toastrMsg = t('toastrImportDone', imported, total);
+    if (skipped > 0) toastrMsg += t('toastrImportSkipped', skipped);
+    if (failed  > 0) toastrMsg += t('toastrImportFailed',  failed);
+
+    if (imported > 0)    toastr.success(toastrMsg);
+    else if (failed > 0) toastr.error(toastrMsg);
+    else                 toastr.warning(toastrMsg);
 
     showLogButton('import-cards', errors.length > 0 ? errors : null);
     resetImportUI();
-    // FIX: setStatus ПОСЛЕ resetImportUI — иначе reset затирал бы статус.
     setStatus('import-cards', doneMsg, failed > 0 && imported === 0);
 }
 
-// ═══════════════════════════════════
-// ─── UI ───
-// ═══════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// ─── UI ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 function createUI() {
-    // FIX: защита от двойной вставки при горячей перезагрузке расширения.
-    //      Одинаковые id в DOM → undefined behavior.
     $('#export-cards-settings').remove();
 
     const html = `
         <div id="export-cards-settings">
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
-                    <b>Export / Import Cards ZIP</b>
+                    <b>${t('panelTitle')}</b>
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
                 <div class="inline-drawer-content">
 
                     <!-- ── EXPORT ── -->
-                    <div class="export-cards-section-label">Export</div>
+                    <div class="export-cards-section-label">${t('sectionExport')}</div>
                     <div class="export-cards-policy-row">
-                        <label for="export-cards-duplicate-policy">On duplicate:</label>
+                        <label for="export-cards-duplicate-policy">${t('onDuplicate')}</label>
                         <select id="export-cards-duplicate-policy">
-                            <option value="rename">Auto-rename</option>
-                            <option value="skip">Skip</option>
+                            <option value="rename">${t('policyRename')}</option>
+                            <option value="skip">${t('policySkip')}</option>
                         </select>
                     </div>
                     <div id="export-cards-btn" class="menu_button">
                         <i class="fa-solid fa-box-archive"></i>
-                        <span>Export All as ZIP</span>
+                        <span>${t('btnExport')}</span>
                     </div>
                     <div id="export-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
                         <i class="fa-solid fa-xmark"></i>
-                        <span>Cancel Export</span>
+                        <span>${t('btnCancelExport')}</span>
                     </div>
                     <div class="export-cards-progress-row" style="display:none;" id="export-cards-progress-bar">
                         <div class="export-cards-bar-wrap">
@@ -660,28 +730,28 @@ function createUI() {
                     <div id="export-cards-status" class="export-cards-status"></div>
                     <button id="export-cards-log-btn" class="export-cards-log-btn" style="display:none;">
                         <span class="export-cards-log-dot"></span>
-                        Download export log <span class="export-cards-log-count"></span>
+                        ${t('btnDownloadExportLog')} <span class="export-cards-log-count"></span>
                     </button>
 
                     <div class="export-cards-divider"></div>
 
                     <!-- ── IMPORT ── -->
-                    <div class="export-cards-section-label">Import</div>
+                    <div class="export-cards-section-label">${t('sectionImport')}</div>
                     <div class="export-cards-policy-row">
-                        <label for="import-cards-duplicate-policy">On duplicate:</label>
+                        <label for="import-cards-duplicate-policy">${t('onDuplicate')}</label>
                         <select id="import-cards-duplicate-policy">
-                            <option value="rename">Auto-rename</option>
-                            <option value="skip">Skip</option>
-                            <option value="anyway">Import anyway</option>
+                            <option value="rename">${t('policyRename')}</option>
+                            <option value="skip">${t('policySkip')}</option>
+                            <option value="anyway">${t('policyAnyway')}</option>
                         </select>
                     </div>
                     <div id="import-cards-btn" class="menu_button">
                         <i class="fa-solid fa-file-import"></i>
-                        <span>Import from ZIP</span>
+                        <span>${t('btnImport')}</span>
                     </div>
                     <div id="import-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
                         <i class="fa-solid fa-xmark"></i>
-                        <span>Cancel Import</span>
+                        <span>${t('btnCancelImport')}</span>
                     </div>
                     <div class="export-cards-progress-row" style="display:none;" id="import-cards-progress-bar">
                         <div class="export-cards-bar-wrap">
@@ -692,11 +762,9 @@ function createUI() {
                     <div id="import-cards-status" class="export-cards-status"></div>
                     <button id="import-cards-log-btn" class="export-cards-log-btn" style="display:none;">
                         <span class="export-cards-log-dot"></span>
-                        Download import log <span class="export-cards-log-count"></span>
+                        ${t('btnDownloadImportLog')} <span class="export-cards-log-count"></span>
                     </button>
 
-                    <!-- FIX: добавлены MIME-типы zip — файловые менеджеры Android
-                         иногда не распознают .zip по расширению -->
                     <input type="file" id="import-cards-file-input"
                         accept=".zip,application/zip,application/x-zip-compressed"
                         style="display:none;">
@@ -707,8 +775,6 @@ function createUI() {
 
     $('#extensions_settings2').append(html);
 
-    // ── Export ──
-    // Все обработчики через jQuery — унифицировано (было смешение jQuery + нативный DOM).
     $('#export-cards-btn').on('click', async function () {
         if ($(this).hasClass('disabled')) return;
         await exportAllAsZip();
@@ -717,9 +783,7 @@ function createUI() {
     $('#export-cards-cancel-btn').on('click', () => {
         abortExport = true;
         $('#export-cards-cancel-btn').hide();
-        // FIX: честный статус — операция не обрывается мгновенно,
-        //      текущий fetch ещё выполняется.
-        setStatus('export-cards', 'Cancelling... (finishing current)');
+        setStatus('export-cards', t('statusCancelling'));
     });
 
     $('#export-cards-log-btn').on('click', function () {
@@ -730,7 +794,6 @@ function createUI() {
         }
     });
 
-    // ── Import ──
     $('#import-cards-btn').on('click', function () {
         if ($(this).hasClass('disabled')) return;
         $('#import-cards-file-input')[0].click();
@@ -744,7 +807,7 @@ function createUI() {
     $('#import-cards-cancel-btn').on('click', () => {
         abortImport = true;
         $('#import-cards-cancel-btn').hide();
-        setStatus('import-cards', 'Cancelling... (finishing current)');
+        setStatus('import-cards', t('statusCancelling'));
     });
 
     $('#import-cards-log-btn').on('click', function () {
@@ -756,23 +819,19 @@ function createUI() {
     });
 }
 
-// ═══════════════════════════════════
-// ─── Инициализация ───
-// ═══════════════════════════════════
-// FIX: createUI вызывается только после APP_READY —
-//      гарантирует что #extensions_settings2 уже в DOM.
-//      На медленных устройствах (Termux, слабые Android) ST грузится дольше.
+// ═══════════════════════════════════════════════════════════
+// ─── Инициализация ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 (function init() {
     try {
         const { eventSource, event_types } = SillyTavern.getContext();
         eventSource.on(event_types.APP_READY, () => {
             createUI();
-            console.log(`[${MODULE_NAME}] Extension loaded (v1.4).`);
+            console.log(`[${MODULE_NAME}] Extension loaded (v1.5, lang: ${IS_RU ? 'ru' : 'en'}).`);
         });
     } catch (e) {
-        // Fallback: если getContext недоступен при старте — вставляем сразу
         console.warn(`[${MODULE_NAME}] APP_READY fallback:`, e);
         createUI();
-        console.log(`[${MODULE_NAME}] Extension loaded (v1.4, fallback init).`);
+        console.log(`[${MODULE_NAME}] Extension loaded (v1.5, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
     }
 })();
