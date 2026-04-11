@@ -1,4 +1,4 @@
-// Export / Import Cards ZIP v1.5
+// Export / Import Cards ZIP v1.6
 const MODULE_NAME = 'export_all_cards_zip';
 
 let abortExport      = false;
@@ -50,6 +50,11 @@ const STRINGS = {
     policyRename:           { en: 'Auto-rename', ru: 'Переименовать' },
     policySkip:             { en: 'Skip', ru: 'Пропустить' },
     policyAnyway:           { en: 'Import anyway', ru: 'Импортировать всё равно' },
+    hintPolicyRenameExport: { en: 'Duplicate names get a (2), (3)… suffix', ru: 'Дублям добавляется суффикс (2), (3)…' },
+    hintPolicySkipExport:   { en: 'Duplicate names are skipped entirely', ru: 'Дубли имён пропускаются' },
+    hintPolicyRenameImport: { en: 'Duplicates are renamed automatically', ru: 'Дубли переименовываются автоматически' },
+    hintPolicySkipImport:   { en: 'Existing characters are not overwritten', ru: 'Существующие персонажи не перезаписываются' },
+    hintPolicyAnyway:       { en: 'Always import, creates duplicate entries', ru: 'Импортировать всегда, создавая дубли' },
 
     // ── Кнопки ──
     btnExport:              { en: 'Export All as ZIP', ru: 'Экспортировать всё в ZIP' },
@@ -75,19 +80,19 @@ const STRINGS = {
     confirmLargeBody:       { en: 'This ZIP is {0} MB.\nLoading it may use a lot of RAM and slow down the device.\n\nContinue?', ru: 'Размер ZIP: {0} МБ.\nЗагрузка может занять много памяти и замедлить устройство.\n\nПродолжить?' },
 
     // ── Статусы ──
-    statusLoadingZip:       { en: 'Loading ZIP library...', ru: 'Загрузка библиотеки ZIP...' },
-    statusGeneratingZip:    { en: 'Generating ZIP...', ru: 'Создание ZIP...' },
-    statusReadingZip:       { en: 'Reading ZIP...', ru: 'Чтение ZIP...' },
+    statusLoadingZip:       { en: 'Loading ZIP library…', ru: 'Загрузка библиотеки ZIP…' },
+    statusGeneratingZip:    { en: 'Generating ZIP…', ru: 'Создание ZIP…' },
+    statusReadingZip:       { en: 'Reading ZIP…', ru: 'Чтение ZIP…' },
     statusExporting:        { en: 'Exporting {0}/{1}: {2}', ru: 'Экспорт {0}/{1}: {2}' },
     statusSkippedDup:       { en: 'Skipped {0}/{1}: {2} (duplicate)', ru: 'Пропущен {0}/{1}: {2} (дубль)' },
     statusImporting:        { en: 'Importing {0}/{1}: {2}', ru: 'Импорт {0}/{1}: {2}' },
-    statusCancelling:       { en: 'Cancelling... (finishing current)', ru: 'Отмена... (завершаем текущий)' },
+    statusCancelling:       { en: 'Cancelling… (finishing current)', ru: 'Отмена… (завершаем текущий)' },
     statusCancelled:        { en: 'Export cancelled.', ru: 'Экспорт отменён.' },
     statusNoPng:            { en: 'No PNG files found.', ru: 'PNG файлы не найдены.' },
-    statusErrZipLib:        { en: 'Error: failed to load ZIP library.', ru: 'Ошибка: не удалось загрузить ZIP библиотеку.' },
-    statusErrZipRead:       { en: 'Error: failed to read ZIP.', ru: 'Ошибка: не удалось прочитать ZIP.' },
-    statusErrZipGen:        { en: 'Error: ZIP generation failed.', ru: 'Ошибка: не удалось создать ZIP.' },
-    statusErrNothing:       { en: 'Error: nothing exported.', ru: 'Ошибка: ничего не экспортировано.' },
+    statusErrZipLib:        { en: 'Failed to load ZIP library.', ru: 'Не удалось загрузить ZIP библиотеку.' },
+    statusErrZipRead:       { en: 'Failed to read ZIP.', ru: 'Не удалось прочитать ZIP.' },
+    statusErrZipGen:        { en: 'ZIP generation failed.', ru: 'Не удалось создать ZIP.' },
+    statusErrNothing:       { en: 'Nothing exported.', ru: 'Ничего не экспортировано.' },
 
     statusDoneExport:       { en: 'Done. {0} exported{1}{2}.', ru: 'Готово. Экспортировано: {0}{1}{2}.' },
     statusDoneExportFailed: { en: ', {0} failed', ru: ', ошибок: {0}' },
@@ -113,6 +118,10 @@ const STRINGS = {
     toastrImportFailed:     { en: ' {0} failed.', ru: ' Ошибок: {0}.' },
     toastrCancelledExport:  { en: 'Export cancelled. {0}/{1} exported.', ru: 'Экспорт отменён. Экспортировано {0}/{1}.' },
     toastrCancelledImport:  { en: 'Import cancelled. {0}/{1} imported.', ru: 'Импорт отменён. Импортировано {0}/{1}.' },
+
+    // ── Имя файла для импорта ──
+    fileSelected:           { en: '📦 {0}', ru: '📦 {0}' },
+    fileNone:               { en: '', ru: '' },
 
     // ── Ошибки в лог ──
     errNoAvatar:            { en: '{0}: no avatar URL', ru: '{0}: нет URL аватара' },
@@ -203,11 +212,34 @@ async function showConfirm(title, text) {
 // ═══════════════════════════════════════════════════════════
 function el(id) { return document.getElementById(id); }
 
-function setStatus(prefix, text, isError = false) {
-    const e = el(`${prefix}-status`);
-    if (!e) return;
-    e.textContent = text;
-    e.style.color = isError ? 'var(--export-cards-error, #e07070)' : '';
+/**
+ * Устанавливает статус с иконкой и визуальным состоянием.
+ * @param {'export-cards'|'import-cards'} prefix
+ * @param {string} text — текст сообщения
+ * @param {'idle'|'running'|'running-import'|'success'|'error'|'warning'|'cancel'} state
+ */
+function setStatus(prefix, text, state = 'idle') {
+    const wrap = el(`${prefix}-status`);
+    if (!wrap) return;
+
+    const iconEl = wrap.querySelector('.export-cards-status-icon');
+    const textEl = wrap.querySelector('.export-cards-status-text');
+    if (!iconEl || !textEl) return;
+
+    // иконки Font Awesome по состоянию
+    const icons = {
+        idle:           '',
+        running:        'fa-solid fa-spinner spinning',
+        'running-import': 'fa-solid fa-spinner spinning',
+        success:        'fa-solid fa-check',
+        error:          'fa-solid fa-circle-exclamation',
+        warning:        'fa-solid fa-triangle-exclamation',
+        cancel:         'fa-solid fa-ban',
+    };
+
+    wrap.dataset.state = state;
+    iconEl.className = `export-cards-status-icon ${icons[state] || ''}`;
+    textEl.textContent = text;
 }
 
 function setProgress(prefix, current, total) {
@@ -232,6 +264,37 @@ function showLogButton(prefix, errors) {
     } else {
         btn.style.display = 'none';
     }
+}
+
+/**
+ * Показывает имя выбранного файла под кнопкой Import.
+ * @param {string|null} filename
+ */
+function setFilename(filename) {
+    const el2 = el('import-cards-filename');
+    if (!el2) return;
+    el2.textContent = filename ? t('fileSelected', filename) : '';
+}
+
+// ─── Подсказка для политики дублей ──────────────────────────
+function updatePolicyHint(prefix) {
+    const select = el(`${prefix}-duplicate-policy`);
+    const hint   = el(`${prefix}-policy-hint`);
+    if (!select || !hint) return;
+
+    const hintKeys = {
+        'export-cards': {
+            rename: 'hintPolicyRenameExport',
+            skip:   'hintPolicySkipExport',
+        },
+        'import-cards': {
+            rename: 'hintPolicyRenameImport',
+            skip:   'hintPolicySkipImport',
+            anyway: 'hintPolicyAnyway',
+        },
+    };
+    const key = hintKeys[prefix]?.[select.value];
+    hint.textContent = key ? t(key) : '';
 }
 
 // ─── Скачивание файлов ──────────────────────────────────────
@@ -305,6 +368,7 @@ function resetImportUI() {
     if (counter) counter.textContent = '';
     const fileInput = el('import-cards-file-input');
     if (fileInput) fileInput.value = '';
+    setFilename(null);
     // статус намеренно НЕ сбрасываем — пользователь должен видеть итог
 }
 
@@ -393,13 +457,13 @@ async function exportAllAsZip() {
     el('export-cards-btn')?.classList.add('disabled');
     $('#export-cards-cancel-btn').show();
     showLogButton('export-cards', null);
-    setStatus('export-cards', '');
+    setStatus('export-cards', '', 'idle');
 
-    setStatus('export-cards', t('statusLoadingZip'));
+    setStatus('export-cards', t('statusLoadingZip'), 'running');
     if (!await loadJSZip()) {
         toastr.error(t('toastrZipLibFail'));
         resetExportUI();
-        setStatus('export-cards', t('statusErrZipLib'), true);
+        setStatus('export-cards', t('statusErrZipLib'), 'error');
         return;
     }
 
@@ -431,12 +495,12 @@ async function exportAllAsZip() {
             errors.push(t('errSkippedDup', charName));
             skipped++;
             setProgress('export-cards', i + 1, total);
-            setStatus('export-cards', t('statusSkippedDup', i + 1, total, charName));
+            setStatus('export-cards', t('statusSkippedDup', i + 1, total, charName), 'running');
             continue;
         }
 
         setProgress('export-cards', i + 1, total);
-        setStatus('export-cards', t('statusExporting', i + 1, total, charName));
+        setStatus('export-cards', t('statusExporting', i + 1, total, charName), 'running');
 
         const blob = await fetchCharacterPng(char.avatar);
         if (blob) {
@@ -453,7 +517,7 @@ async function exportAllAsZip() {
 
     if (abortExport && exported === 0) {
         resetExportUI();
-        setStatus('export-cards', t('statusCancelled'));
+        setStatus('export-cards', t('statusCancelled'), 'cancel');
         return;
     }
 
@@ -461,7 +525,7 @@ async function exportAllAsZip() {
         toastr.error(t('toastrNothingExported'));
         showLogButton('export-cards', errors);
         resetExportUI();
-        setStatus('export-cards', t('statusErrNothing'), true);
+        setStatus('export-cards', t('statusErrNothing'), 'error');
         return;
     }
 
@@ -470,7 +534,7 @@ async function exportAllAsZip() {
         console.warn(`[${MODULE_NAME}] Export errors:`, errors);
     }
 
-    setStatus('export-cards', t('statusGeneratingZip'));
+    setStatus('export-cards', t('statusGeneratingZip'), 'running');
 
     let zipBlob;
     try {
@@ -483,7 +547,7 @@ async function exportAllAsZip() {
         toastr.error(t('toastrZipGenFail'));
         showLogButton('export-cards', errors);
         resetExportUI();
-        setStatus('export-cards', t('statusErrZipGen'), true);
+        setStatus('export-cards', t('statusErrZipGen'), 'error');
         return;
     }
 
@@ -502,7 +566,8 @@ async function exportAllAsZip() {
 
     showLogButton('export-cards', errors.length > 0 ? errors : null);
     resetExportUI();
-    setStatus('export-cards', doneMsg);
+    // состояние: success если нет ошибок, warning если часть упала
+    setStatus('export-cards', doneMsg, failed > 0 ? 'warning' : 'success');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -519,38 +584,41 @@ async function importFromZip(file) {
         return;
     }
 
+    // Показываем имя выбранного файла
+    setFilename(file.name);
+
     el('import-cards-btn')?.classList.add('disabled');
     $('#import-cards-cancel-btn').show();
     showLogButton('import-cards', null);
-    setStatus('import-cards', '');
+    setStatus('import-cards', '', 'idle');
 
     if (file.size > MAX_ZIP_WARN_MB * 1024 * 1024) {
         const sizeMB = (file.size / 1024 / 1024).toFixed(0);
         const ok = await showConfirm(t('confirmLargeTitle'), t('confirmLargeBody', sizeMB));
         if (!ok) {
             resetImportUI();
-            setStatus('import-cards', '');
+            setStatus('import-cards', '', 'idle');
             return;
         }
     }
 
-    setStatus('import-cards', t('statusLoadingZip'));
+    setStatus('import-cards', t('statusLoadingZip'), 'running-import');
     if (!await loadJSZip()) {
         toastr.error(t('toastrZipLibFail'));
         resetImportUI();
-        setStatus('import-cards', t('statusErrZipLib'), true);
+        setStatus('import-cards', t('statusErrZipLib'), 'error');
         return;
     }
 
     let zip;
     try {
-        setStatus('import-cards', t('statusReadingZip'));
+        setStatus('import-cards', t('statusReadingZip'), 'running-import');
         zip = await JSZip.loadAsync(await file.arrayBuffer());
     } catch (e) {
         console.error(`[${MODULE_NAME}] Read ZIP failed:`, e);
         toastr.error(t('toastrZipReadFail'));
         resetImportUI();
-        setStatus('import-cards', t('statusErrZipRead'), true);
+        setStatus('import-cards', t('statusErrZipRead'), 'error');
         return;
     }
 
@@ -564,7 +632,7 @@ async function importFromZip(file) {
     if (pngFiles.length === 0) {
         toastr.warning(t('toastrNoPng'));
         resetImportUI();
-        setStatus('import-cards', t('statusNoPng'));
+        setStatus('import-cards', t('statusNoPng'), 'warning');
         return;
     }
 
@@ -593,7 +661,7 @@ async function importFromZip(file) {
 
     if (!await showConfirm(t('confirmImportTitle'), confirmMsg)) {
         resetImportUI();
-        setStatus('import-cards', '');
+        setStatus('import-cards', '', 'idle');
         return;
     }
 
@@ -615,7 +683,7 @@ async function importFromZip(file) {
         const sanitized     = safeName(charName);
 
         setProgress('import-cards', i + 1, total);
-        setStatus('import-cards', t('statusImporting', i + 1, total, charName));
+        setStatus('import-cards', t('statusImporting', i + 1, total, charName), 'running-import');
 
         if (existingNames.has(charNameLower) && duplicatePolicy === 'skip') {
             errors.push(t('errAlreadyExists', charName));
@@ -686,7 +754,11 @@ async function importFromZip(file) {
 
     showLogButton('import-cards', errors.length > 0 ? errors : null);
     resetImportUI();
-    setStatus('import-cards', doneMsg, failed > 0 && imported === 0);
+
+    const finalState = failed > 0 && imported === 0 ? 'error'
+                     : failed > 0                   ? 'warning'
+                     : 'success';
+    setStatus('import-cards', doneMsg, finalState);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -704,70 +776,98 @@ function createUI() {
                 </div>
                 <div class="inline-drawer-content">
 
-                    <!-- ── EXPORT ── -->
-                    <div class="export-cards-section-label">${t('sectionExport')}</div>
-                    <div class="export-cards-policy-row">
-                        <label for="export-cards-duplicate-policy">${t('onDuplicate')}</label>
-                        <select id="export-cards-duplicate-policy">
-                            <option value="rename">${t('policyRename')}</option>
-                            <option value="skip">${t('policySkip')}</option>
-                        </select>
-                    </div>
-                    <div id="export-cards-btn" class="menu_button">
-                        <i class="fa-solid fa-box-archive"></i>
-                        <span>${t('btnExport')}</span>
-                    </div>
-                    <div id="export-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span>${t('btnCancelExport')}</span>
-                    </div>
-                    <div class="export-cards-progress-row" style="display:none;" id="export-cards-progress-bar">
-                        <div class="export-cards-bar-wrap">
-                            <div id="export-cards-progress-fill" class="export-cards-bar-fill green"></div>
+                    <!-- ══ EXPORT ══ -->
+                    <div class="export-cards-section">
+                        <div class="export-cards-section-header">
+                            <i class="fa-solid fa-box-archive"></i>
+                            <span class="export-cards-section-label">${t('sectionExport')}</span>
                         </div>
-                        <span id="export-cards-progress-counter" class="export-cards-counter"></span>
-                    </div>
-                    <div id="export-cards-status" class="export-cards-status"></div>
-                    <button id="export-cards-log-btn" class="export-cards-log-btn" style="display:none;">
-                        <span class="export-cards-log-dot"></span>
-                        ${t('btnDownloadExportLog')} <span class="export-cards-log-count"></span>
-                    </button>
 
-                    <div class="export-cards-divider"></div>
-
-                    <!-- ── IMPORT ── -->
-                    <div class="export-cards-section-label">${t('sectionImport')}</div>
-                    <div class="export-cards-policy-row">
-                        <label for="import-cards-duplicate-policy">${t('onDuplicate')}</label>
-                        <select id="import-cards-duplicate-policy">
-                            <option value="rename">${t('policyRename')}</option>
-                            <option value="skip">${t('policySkip')}</option>
-                            <option value="anyway">${t('policyAnyway')}</option>
-                        </select>
-                    </div>
-                    <div id="import-cards-btn" class="menu_button">
-                        <i class="fa-solid fa-file-import"></i>
-                        <span>${t('btnImport')}</span>
-                    </div>
-                    <div id="import-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span>${t('btnCancelImport')}</span>
-                    </div>
-                    <div class="export-cards-progress-row" style="display:none;" id="import-cards-progress-bar">
-                        <div class="export-cards-bar-wrap">
-                            <div id="import-cards-progress-fill" class="export-cards-bar-fill blue"></div>
+                        <div class="export-cards-policy-row">
+                            <label for="export-cards-duplicate-policy">${t('onDuplicate')}</label>
+                            <select id="export-cards-duplicate-policy">
+                                <option value="rename">${t('policyRename')}</option>
+                                <option value="skip">${t('policySkip')}</option>
+                            </select>
                         </div>
-                        <span id="import-cards-progress-counter" class="export-cards-counter"></span>
-                    </div>
-                    <div id="import-cards-status" class="export-cards-status"></div>
-                    <button id="import-cards-log-btn" class="export-cards-log-btn" style="display:none;">
-                        <span class="export-cards-log-dot"></span>
-                        ${t('btnDownloadImportLog')} <span class="export-cards-log-count"></span>
-                    </button>
+                        <div id="export-cards-policy-hint" class="export-cards-policy-hint"></div>
 
-                    <input type="file" id="import-cards-file-input"
-                        accept=".zip,application/zip,application/x-zip-compressed"
-                        style="display:none;">
+                        <div id="export-cards-btn" class="menu_button">
+                            <i class="fa-solid fa-file-zipper"></i>
+                            <span>${t('btnExport')}</span>
+                        </div>
+                        <div id="export-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
+                            <i class="fa-solid fa-xmark"></i>
+                            <span>${t('btnCancelExport')}</span>
+                        </div>
+
+                        <div class="export-cards-progress-row" style="display:none;" id="export-cards-progress-bar">
+                            <div class="export-cards-bar-wrap">
+                                <div id="export-cards-progress-fill" class="export-cards-bar-fill green"></div>
+                            </div>
+                            <span id="export-cards-progress-counter" class="export-cards-counter"></span>
+                        </div>
+
+                        <div id="export-cards-status" class="export-cards-status" data-state="idle">
+                            <i class="export-cards-status-icon"></i>
+                            <span class="export-cards-status-text"></span>
+                        </div>
+                        <button id="export-cards-log-btn" class="export-cards-log-btn" style="display:none;">
+                            <span class="export-cards-log-dot"></span>
+                            ${t('btnDownloadExportLog')} <span class="export-cards-log-count"></span>
+                        </button>
+                    </div>
+
+                    <div class="export-cards-sections-gap"></div>
+
+                    <!-- ══ IMPORT ══ -->
+                    <div class="export-cards-section">
+                        <div class="export-cards-section-header">
+                            <i class="fa-solid fa-file-import"></i>
+                            <span class="export-cards-section-label">${t('sectionImport')}</span>
+                        </div>
+
+                        <div class="export-cards-policy-row">
+                            <label for="import-cards-duplicate-policy">${t('onDuplicate')}</label>
+                            <select id="import-cards-duplicate-policy">
+                                <option value="rename">${t('policyRename')}</option>
+                                <option value="skip">${t('policySkip')}</option>
+                                <option value="anyway">${t('policyAnyway')}</option>
+                            </select>
+                        </div>
+                        <div id="import-cards-policy-hint" class="export-cards-policy-hint"></div>
+
+                        <div id="import-cards-btn" class="menu_button">
+                            <i class="fa-solid fa-folder-open"></i>
+                            <span>${t('btnImport')}</span>
+                        </div>
+                        <div id="import-cards-filename" class="export-cards-filename"></div>
+                        <div id="import-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
+                            <i class="fa-solid fa-xmark"></i>
+                            <span>${t('btnCancelImport')}</span>
+                        </div>
+
+                        <div class="export-cards-progress-row" style="display:none;" id="import-cards-progress-bar">
+                            <div class="export-cards-bar-wrap">
+                                <div id="import-cards-progress-fill" class="export-cards-bar-fill blue"></div>
+                            </div>
+                            <span id="import-cards-progress-counter" class="export-cards-counter"></span>
+                        </div>
+
+                        <div id="import-cards-status" class="export-cards-status" data-state="idle">
+                            <i class="export-cards-status-icon"></i>
+                            <span class="export-cards-status-text"></span>
+                        </div>
+                        <button id="import-cards-log-btn" class="export-cards-log-btn" style="display:none;">
+                            <span class="export-cards-log-dot"></span>
+                            ${t('btnDownloadImportLog')} <span class="export-cards-log-count"></span>
+                        </button>
+
+                        <input type="file" id="import-cards-file-input"
+                            accept=".zip,application/zip,application/x-zip-compressed"
+                            style="display:none;">
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -775,6 +875,11 @@ function createUI() {
 
     $('#extensions_settings2').append(html);
 
+    // Инициализируем подсказки
+    updatePolicyHint('export-cards');
+    updatePolicyHint('import-cards');
+
+    // ── обработчики ──
     $('#export-cards-btn').on('click', async function () {
         if ($(this).hasClass('disabled')) return;
         await exportAllAsZip();
@@ -783,8 +888,10 @@ function createUI() {
     $('#export-cards-cancel-btn').on('click', () => {
         abortExport = true;
         $('#export-cards-cancel-btn').hide();
-        setStatus('export-cards', t('statusCancelling'));
+        setStatus('export-cards', t('statusCancelling'), 'cancel');
     });
+
+    $('#export-cards-duplicate-policy').on('change', () => updatePolicyHint('export-cards'));
 
     $('#export-cards-log-btn').on('click', function () {
         const log = this.dataset.log;
@@ -807,8 +914,10 @@ function createUI() {
     $('#import-cards-cancel-btn').on('click', () => {
         abortImport = true;
         $('#import-cards-cancel-btn').hide();
-        setStatus('import-cards', t('statusCancelling'));
+        setStatus('import-cards', t('statusCancelling'), 'cancel');
     });
+
+    $('#import-cards-duplicate-policy').on('change', () => updatePolicyHint('import-cards'));
 
     $('#import-cards-log-btn').on('click', function () {
         const log = this.dataset.log;
@@ -827,11 +936,11 @@ function createUI() {
         const { eventSource, event_types } = SillyTavern.getContext();
         eventSource.on(event_types.APP_READY, () => {
             createUI();
-            console.log(`[${MODULE_NAME}] Extension loaded (v1.5, lang: ${IS_RU ? 'ru' : 'en'}).`);
+            console.log(`[${MODULE_NAME}] Extension loaded (v1.6, lang: ${IS_RU ? 'ru' : 'en'}).`);
         });
     } catch (e) {
         console.warn(`[${MODULE_NAME}] APP_READY fallback:`, e);
         createUI();
-        console.log(`[${MODULE_NAME}] Extension loaded (v1.5, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
+        console.log(`[${MODULE_NAME}] Extension loaded (v1.6, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
     }
 })();

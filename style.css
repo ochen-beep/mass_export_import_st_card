@@ -1,141 +1,305 @@
-/* Export / Import Cards ZIP v1.4 */
+/* Export / Import Cards ZIP — v1.6 */
 
-/* FIX: box-sizing на все элементы расширения —
-   защита от глобальных переопределений других расширений или ST. */
+/* ═══════════════════════════════════════════════════════════
+   Box-sizing reset — защита от глобальных переопределений
+   ═══════════════════════════════════════════════════════════ */
 #export-cards-settings *,
 #export-cards-settings *::before,
 #export-cards-settings *::after {
     box-sizing: border-box;
 }
 
-/* FIX: убран display:none на .inline-drawer-content —
-   ST сам управляет этим классом через inline-drawer-toggle.
-   Жёсткое display:none в CSS переопределяло логику ST и секция не открывалась. */
+/* ═══════════════════════════════════════════════════════════
+   Inline-drawer — убран display:none, ST управляет сам
+   ═══════════════════════════════════════════════════════════ */
 #export-cards-settings .inline-drawer-content {
+    display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
+    padding-bottom: 4px;
 }
 
-#export-cards-settings .menu_button {
-    margin-top: 2px;
-    cursor: pointer;
-    /* FIX: минимальная высота touch target — 44px (Apple HIG) / 48dp (Material Design).
-       На мобильных кнопки были слишком маленькими для надёжного нажатия пальцем. */
-    min-height: 44px;
+/* ═══════════════════════════════════════════════════════════
+   Секция — карточка с лёгким фоном
+   Даёт чёткое визуальное разделение Export / Import
+   ═══════════════════════════════════════════════════════════ */
+.export-cards-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 10px 12px;
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor, rgba(255,255,255,0.04));
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.08));
 }
 
-/* ─── Метки секций ─── */
+/* ─── Заголовок секции ─── */
+.export-cards-section-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 2px;
+}
+
+.export-cards-section-header i {
+    font-size: 0.85em;
+    opacity: 0.7;
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
 .export-cards-section-label {
-    font-size: 0.75em;
-    font-weight: 600;
+    font-size: 0.72em;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
-    opacity: 0.5;
-    margin-top: 2px;
-    padding: 0 2px;
+    letter-spacing: 0.09em;
+    opacity: 0.55;
 }
 
-/* ─── Политика дублей ─── */
+/* ═══════════════════════════════════════════════════════════
+   Кнопки — touch-friendly, min 44px
+   ═══════════════════════════════════════════════════════════ */
+#export-cards-settings .menu_button {
+    margin-top: 0;
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+    user-select: none;
+}
+
+#export-cards-settings .menu_button:active:not(.disabled) {
+    transform: scale(0.97);
+}
+
+#export-cards-settings .menu_button.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Кнопка Cancel — деструктивный акцент */
+.export-cards-cancel {
+    opacity: 0.65;
+    border-color: var(--export-cards-error-border, rgba(220, 80, 80, 0.4)) !important;
+    color: var(--export-cards-cancel-text, #e07070) !important;
+    transition: opacity 0.15s ease, transform 0.1s ease !important;
+}
+
+.export-cards-cancel:hover {
+    opacity: 1 !important;
+    border-color: var(--export-cards-error-border, rgba(220, 80, 80, 0.7)) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Строка политики дублей
+   ═══════════════════════════════════════════════════════════ */
 .export-cards-policy-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 2px;
+    padding: 0 1px;
 }
 
 .export-cards-policy-row label {
     font-size: 0.8em;
-    opacity: 0.7;
+    opacity: 0.65;
     white-space: nowrap;
     flex-shrink: 0;
+    cursor: default;
 }
 
 .export-cards-policy-row select {
-    font-size: 0.8em;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid var(--SmartThemeBorderColor, #555);
-    background: var(--SmartThemeBlurTintColor, transparent);
+    font-size: 0.82em;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
+    background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
     color: inherit;
     cursor: pointer;
     flex: 1;
     min-width: 0;
-    /* FIX: touch target для select на мобильных */
     min-height: 36px;
+    appearance: none;
+    -webkit-appearance: none;
+    /* стрелка через SVG — работает в любом WebView */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 26px;
+    transition: border-color 0.15s ease;
 }
 
-/* ─── Прогресс-строка ─── */
+.export-cards-policy-row select:focus {
+    outline: none;
+    border-color: var(--SmartThemeQuoteColor, #4caf7d);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Имя выбранного файла (показывается при выборе ZIP)
+   ═══════════════════════════════════════════════════════════ */
+.export-cards-filename {
+    font-size: 0.78em;
+    opacity: 0.6;
+    padding: 0 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 1em;
+    transition: opacity 0.2s ease;
+}
+
+.export-cards-filename:not(:empty) {
+    opacity: 0.75;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Прогресс-блок — высота 8px, анимации
+   ═══════════════════════════════════════════════════════════ */
 .export-cards-progress-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 4px;
+    margin-top: 2px;
+    /* плавное появление */
+    animation: ecFadeIn 0.2s ease;
+}
+
+@keyframes ecFadeIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .export-cards-bar-wrap {
     flex: 1;
-    height: 5px;
-    background: var(--SmartThemeBodyColor, #333);
+    height: 8px;            /* увеличено с 5px — лучше видно на мобильных */
+    background: var(--SmartThemeBodyColor, rgba(255,255,255,0.1));
     border-radius: 99px;
     overflow: hidden;
-    opacity: 0.6;
+    opacity: 0.75;
 }
 
 .export-cards-bar-fill {
     height: 100%;
     width: 0%;
     border-radius: 99px;
-    transition: width 0.25s ease;
+    transition: width 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+/* shimmer-эффект пока идёт операция */
+.export-cards-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+    animation: ecShimmer 1.6s infinite;
+}
+
+@keyframes ecShimmer {
+    from { left: -60%; }
+    to   { left: 110%; }
 }
 
 .export-cards-bar-fill.green {
-    background: var(--SmartThemeQuoteColor, #4caf7d);
+    background: linear-gradient(90deg,
+        var(--SmartThemeQuoteColor, #4caf7d),
+        color-mix(in srgb, var(--SmartThemeQuoteColor, #4caf7d) 70%, #6ee7a0));
 }
 
 .export-cards-bar-fill.blue {
-    background: var(--SmartThemeUserMesBlurTintColor, #5b9bd5);
+    background: linear-gradient(90deg,
+        var(--SmartThemeUserMesBlurTintColor, #5b9bd5),
+        color-mix(in srgb, var(--SmartThemeUserMesBlurTintColor, #5b9bd5) 70%, #8ec6f0));
+}
+
+/* Shimmer останавливается когда заполнено */
+.export-cards-bar-fill[style*="100%"]::after {
+    animation: none;
 }
 
 .export-cards-counter {
-    font-size: 0.75em;
-    opacity: 0.6;
+    font-size: 0.78em;
+    opacity: 0.65;
     white-space: nowrap;
-    min-width: 50px;
+    min-width: 52px;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
-/* ─── Статус ─── */
+/* ═══════════════════════════════════════════════════════════
+   Статус — с иконкой-индикатором
+   ═══════════════════════════════════════════════════════════ */
 .export-cards-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
     font-size: 0.8em;
     padding: 1px 2px;
-    min-height: 1.1em;
+    min-height: 1.6em;      /* резерв — нет Layout Shift при появлении текста */
     word-break: break-word;
     opacity: 0.85;
+    transition: color 0.2s ease;
 }
 
-/* ─── Кнопка скачать лог ─── */
+/* иконка слева от текста статуса */
+.export-cards-status-icon {
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    margin-top: 1px;
+    font-size: 0.9em;
+}
+
+/* Спиннер для состояния «в процессе» */
+.export-cards-status-icon.spinning {
+    animation: ecSpin 1s linear infinite;
+}
+
+@keyframes ecSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* Цвет статуса по состоянию */
+.export-cards-status[data-state="running"] .export-cards-status-icon { color: var(--SmartThemeQuoteColor, #4caf7d); }
+.export-cards-status[data-state="running-import"] .export-cards-status-icon { color: var(--SmartThemeUserMesBlurTintColor, #5b9bd5); }
+.export-cards-status[data-state="success"] { opacity: 1; }
+.export-cards-status[data-state="success"] .export-cards-status-icon { color: var(--SmartThemeQuoteColor, #4caf7d); }
+.export-cards-status[data-state="error"]   .export-cards-status-icon { color: var(--export-cards-error, #e07070); }
+.export-cards-status[data-state="warning"] .export-cards-status-icon { color: #e8a838; }
+.export-cards-status[data-state="error"]   { color: var(--export-cards-error, #e07070); }
+
+/* ═══════════════════════════════════════════════════════════
+   Кнопка скачать лог
+   ═══════════════════════════════════════════════════════════ */
 .export-cards-log-btn {
-    /* FIX: заменён width: fit-content на display: inline-flex —
-       fit-content без префикса нестабилен в некоторых Chromium WebView. */
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
+    padding: 5px 10px;
     margin-top: 2px;
-    border-radius: 4px;
-    border: 1px solid var(--SmartThemeBorderColor, #555);
-    background: transparent;
-    color: inherit;
+    border-radius: 6px;
+    border: 1px solid var(--export-cards-error-border, rgba(224, 112, 112, 0.35));
+    background: var(--export-cards-log-bg, rgba(224, 112, 112, 0.07));
+    color: var(--export-cards-error, #e07070);
     font-size: 0.78em;
-    opacity: 0.7;
     cursor: pointer;
-    transition: opacity 0.15s;
-    /* FIX: touch target */
+    transition: opacity 0.15s ease, background 0.15s ease;
     min-height: 36px;
+    /* плавное появление */
+    animation: ecFadeIn 0.25s ease;
 }
 
 .export-cards-log-btn:hover {
+    background: var(--export-cards-log-bg-hover, rgba(224, 112, 112, 0.15));
     opacity: 1;
 }
 
@@ -144,23 +308,70 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #e2584a;
+    background: currentColor;
     flex-shrink: 0;
+    opacity: 0.9;
 }
 
-/* ─── Кнопка отмены ─── */
-.export-cards-cancel {
+.export-cards-log-count {
     opacity: 0.75;
 }
 
-.export-cards-cancel:hover {
-    opacity: 1;
+/* ═══════════════════════════════════════════════════════════
+   Разделитель между секциями
+   ═══════════════════════════════════════════════════════════ */
+.export-cards-sections-gap {
+    height: 4px;
 }
 
-/* ─── Разделитель ─── */
-.export-cards-divider {
-    border: none;
-    border-top: 1px solid var(--SmartThemeBorderColor, #555);
-    opacity: 0.2;
-    margin: 6px 0 4px;
+/* ═══════════════════════════════════════════════════════════
+   Подсказки к политике дублей (tooltip-like)
+   ═══════════════════════════════════════════════════════════ */
+.export-cards-policy-hint {
+    font-size: 0.73em;
+    opacity: 0.45;
+    padding: 0 2px;
+    margin-top: -3px;
+    line-height: 1.4;
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Мобильная адаптация (≤ 600px)
+   Совпадает с breakpoint ST mobile-styles.css
+   ═══════════════════════════════════════════════════════════ */
+@media screen and (max-width: 600px) {
+    .export-cards-section {
+        padding: 8px 8px 10px;
+        border-radius: 6px;
+    }
+
+    #export-cards-settings .menu_button {
+        min-height: 48px;   /* Material Design 48dp */
+        font-size: 1em;
+    }
+
+    .export-cards-cancel {
+        min-height: 48px !important;
+    }
+
+    .export-cards-policy-row select {
+        min-height: 40px;
+        font-size: 0.9em;
+    }
+
+    .export-cards-bar-wrap {
+        height: 10px;       /* толще на мобильных */
+    }
+
+    .export-cards-log-btn {
+        min-height: 40px;
+        font-size: 0.82em;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .export-cards-status {
+        font-size: 0.85em;
+    }
 }
