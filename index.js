@@ -1,4 +1,4 @@
-// Export / Import Cards ZIP v1.6
+// Export / Import Cards ZIP v1.7
 const MODULE_NAME = 'export_all_cards_zip';
 
 let abortExport      = false;
@@ -13,15 +13,6 @@ const MAX_ZIP_WARN_MB = 200;
 // ═══════════════════════════════════════════════════════════
 // ─── i18n ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
-//
-// Определяем язык один раз при загрузке расширения.
-// Приоритет:
-//   1. localStorage['language'] — явный выбор пользователя в настройках ST
-//   2. document.documentElement.lang — ST сам выставляет его в initLocales()
-//   3. navigator.language — язык браузера как последний fallback
-//
-// Поддерживаются: ru-ru → русский, всё остальное → английский (по умолчанию).
-//
 const _stLang = (
     localStorage.getItem('language')
     || document.documentElement.lang
@@ -31,12 +22,6 @@ const _stLang = (
 
 const IS_RU = _stLang.startsWith('ru');
 
-/**
- * Словарь переводов.
- * Ключи — строковые идентификаторы.
- * Значения — объект { en, ru }.
- * Поддержка плейсхолдеров: {0}, {1}, ...
- */
 const STRINGS = {
     // ── Заголовок панели ──
     panelTitle:             { en: 'Export / Import Cards ZIP', ru: 'Экспорт / Импорт карточек ZIP' },
@@ -124,7 +109,7 @@ const STRINGS = {
     fileNone:               { en: '', ru: '' },
 
     // ── Ошибки в лог ──
-    errNoAvatar:            { en: '{0}: no avatar URL', ru: '{0}: нет URL аватара' },
+    errNoAvatar:            { en: '{0}: no avatar (avatar field is empty or "none")', ru: '{0}: нет аватара (поле avatar пустое или "none")' },
     errExportFailed:        { en: '{0}: export failed', ru: '{0}: ошибка экспорта' },
     errSkippedDup:          { en: '{0}: skipped (duplicate name)', ru: '{0}: пропущен (дубль имени)' },
     errReadZip:             { en: '{0}: failed to read from ZIP', ru: '{0}: не удалось прочитать из ZIP' },
@@ -132,12 +117,6 @@ const STRINGS = {
     errAlreadyExists:       { en: '{0}: skipped (already exists)', ru: '{0}: пропущен (уже существует)' },
 };
 
-/**
- * Возвращает переведённую строку с подстановкой плейсхолдеров {0}, {1}, ...
- * @param {keyof typeof STRINGS} key
- * @param {...string|number} args
- * @returns {string}
- */
 function t(key, ...args) {
     const entry = STRINGS[key];
     if (!entry) {
@@ -212,12 +191,6 @@ async function showConfirm(title, text) {
 // ═══════════════════════════════════════════════════════════
 function el(id) { return document.getElementById(id); }
 
-/**
- * Устанавливает статус с иконкой и визуальным состоянием.
- * @param {'export-cards'|'import-cards'} prefix
- * @param {string} text — текст сообщения
- * @param {'idle'|'running'|'running-import'|'success'|'error'|'warning'|'cancel'} state
- */
 function setStatus(prefix, text, state = 'idle') {
     const wrap = el(`${prefix}-status`);
     if (!wrap) return;
@@ -226,15 +199,14 @@ function setStatus(prefix, text, state = 'idle') {
     const textEl = wrap.querySelector('.export-cards-status-text');
     if (!iconEl || !textEl) return;
 
-    // иконки Font Awesome по состоянию
     const icons = {
-        idle:           '',
-        running:        'fa-solid fa-spinner spinning',
+        idle:             '',
+        running:          'fa-solid fa-spinner spinning',
         'running-import': 'fa-solid fa-spinner spinning',
-        success:        'fa-solid fa-check',
-        error:          'fa-solid fa-circle-exclamation',
-        warning:        'fa-solid fa-triangle-exclamation',
-        cancel:         'fa-solid fa-ban',
+        success:          'fa-solid fa-check',
+        error:            'fa-solid fa-circle-exclamation',
+        warning:          'fa-solid fa-triangle-exclamation',
+        cancel:           'fa-solid fa-ban',
     };
 
     wrap.dataset.state = state;
@@ -266,10 +238,6 @@ function showLogButton(prefix, errors) {
     }
 }
 
-/**
- * Показывает имя выбранного файла под кнопкой Import.
- * @param {string|null} filename
- */
 function setFilename(filename) {
     const el2 = el('import-cards-filename');
     if (!el2) return;
@@ -350,14 +318,17 @@ function resetExportUI() {
     if (fill) fill.style.width = '0%';
     const counter = el('export-cards-progress-counter');
     if (counter) counter.textContent = '';
-    // статус намеренно НЕ сбрасываем — пользователь должен видеть итог
 }
 
 function resetImportUI() {
     importInProgress = false;
     abortImport      = false;
+    // Восстанавливаем связь label↔input
     const btn = el('import-cards-btn');
-    if (btn) btn.classList.remove('disabled');
+    if (btn) {
+        btn.classList.remove('disabled');
+        btn.setAttribute('for', 'import-cards-file-input');
+    }
     const cancelBtn = el('import-cards-cancel-btn');
     if (cancelBtn) cancelBtn.style.display = 'none';
     const bar = el('import-cards-progress-bar');
@@ -369,7 +340,6 @@ function resetImportUI() {
     const fileInput = el('import-cards-file-input');
     if (fileInput) fileInput.value = '';
     setFilename(null);
-    // статус намеренно НЕ сбрасываем — пользователь должен видеть итог
 }
 
 // ─── Уникальное имя ─────────────────────────────────────────
@@ -482,7 +452,8 @@ async function exportAllAsZip() {
         const char     = characters[i];
         const charName = char.name || 'unnamed';
 
-        if (!char.avatar) {
+        // char.avatar === 'none' — специальное значение ST когда аватар не задан
+        if (!char.avatar || char.avatar === 'none') {
             errors.push(t('errNoAvatar', charName));
             failed++;
             continue;
@@ -566,7 +537,6 @@ async function exportAllAsZip() {
 
     showLogButton('export-cards', errors.length > 0 ? errors : null);
     resetExportUI();
-    // состояние: success если нет ошибок, warning если часть упала
     setStatus('export-cards', doneMsg, failed > 0 ? 'warning' : 'success');
 }
 
@@ -584,10 +554,14 @@ async function importFromZip(file) {
         return;
     }
 
-    // Показываем имя выбранного файла
     setFilename(file.name);
 
-    el('import-cards-btn')?.classList.add('disabled');
+    // Блокируем label — убираем связь с input чтобы повторный тап не открыл файловый диалог
+    const importBtn = el('import-cards-btn');
+    if (importBtn) {
+        importBtn.classList.add('disabled');
+        importBtn.removeAttribute('for');
+    }
     $('#import-cards-cancel-btn').show();
     showLogButton('import-cards', null);
     setStatus('import-cards', '', 'idle');
@@ -772,7 +746,7 @@ function createUI() {
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
                     <b>${t('panelTitle')}</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-up up"></div>
                 </div>
                 <div class="inline-drawer-content">
 
@@ -837,10 +811,13 @@ function createUI() {
                         </div>
                         <div id="import-cards-policy-hint" class="export-cards-policy-hint"></div>
 
-                        <div id="import-cards-btn" class="menu_button">
+                        <label id="import-cards-btn" class="menu_button" for="import-cards-file-input">
                             <i class="fa-solid fa-folder-open"></i>
                             <span>${t('btnImport')}</span>
-                        </div>
+                        </label>
+                        <input type="file" id="import-cards-file-input"
+                            class="export-cards-file-input-hidden"
+                            accept=".zip,application/zip,application/x-zip-compressed">
                         <div id="import-cards-filename" class="export-cards-filename"></div>
                         <div id="import-cards-cancel-btn" class="menu_button export-cards-cancel" style="display:none;">
                             <i class="fa-solid fa-xmark"></i>
@@ -862,10 +839,6 @@ function createUI() {
                             <span class="export-cards-log-dot"></span>
                             ${t('btnDownloadImportLog')} <span class="export-cards-log-count"></span>
                         </button>
-
-                        <input type="file" id="import-cards-file-input"
-                            accept=".zip,application/zip,application/x-zip-compressed"
-                            style="display:none;">
                     </div>
 
                 </div>
@@ -901,11 +874,8 @@ function createUI() {
         }
     });
 
-    $('#import-cards-btn').on('click', function () {
-        if ($(this).hasClass('disabled')) return;
-        $('#import-cards-file-input')[0].click();
-    });
-
+    // Import: label[for] открывает файловый диалог нативно — не нужен программный .click()
+    // Обрабатываем только change на input
     $('#import-cards-file-input').on('change', async function () {
         const file = this.files[0];
         if (file) await importFromZip(file);
@@ -936,11 +906,11 @@ function createUI() {
         const { eventSource, event_types } = SillyTavern.getContext();
         eventSource.on(event_types.APP_READY, () => {
             createUI();
-            console.log(`[${MODULE_NAME}] Extension loaded (v1.6, lang: ${IS_RU ? 'ru' : 'en'}).`);
+            console.log(`[${MODULE_NAME}] Extension loaded (v1.7, lang: ${IS_RU ? 'ru' : 'en'}).`);
         });
     } catch (e) {
         console.warn(`[${MODULE_NAME}] APP_READY fallback:`, e);
         createUI();
-        console.log(`[${MODULE_NAME}] Extension loaded (v1.6, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
+        console.log(`[${MODULE_NAME}] Extension loaded (v1.7, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
     }
 })();

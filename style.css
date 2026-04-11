@@ -1,4 +1,4 @@
-/* Export / Import Cards ZIP — v1.6 */
+/* Export / Import Cards ZIP — v1.7 */
 
 /* ═══════════════════════════════════════════════════════════
    Box-sizing reset — защита от глобальных переопределений
@@ -10,7 +10,11 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Inline-drawer — убран display:none, ST управляет сам
+   Inline-drawer content
+
+   Начальное состояние: иконка "up", контент виден → display:flex из CSS.
+   При закрытии ST ставит style="display:none" → inline перебивает CSS → скрыто.
+   При открытии ST ставит style="display:block" → наш [style*="block"] → flex.
    ═══════════════════════════════════════════════════════════ */
 #export-cards-settings .inline-drawer-content {
     display: flex;
@@ -19,9 +23,31 @@
     padding-bottom: 4px;
 }
 
+/* ST toggleDrawer() ставит style="display:block" при открытии —
+   переопределяем на flex для корректного column-layout */
+#export-cards-settings .inline-drawer-content[style*="block"] {
+    display: flex !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Visually-hidden file input
+   Нативно доступен для <label for="..."> но невидим.
+   display:none не работает с label в некоторых мобильных браузерах.
+   ═══════════════════════════════════════════════════════════ */
+.export-cards-file-input-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* ═══════════════════════════════════════════════════════════
    Секция — карточка с лёгким фоном
-   Даёт чёткое визуальное разделение Export / Import
    ═══════════════════════════════════════════════════════════ */
 .export-cards-section {
     display: flex;
@@ -126,7 +152,6 @@
     min-height: 36px;
     appearance: none;
     -webkit-appearance: none;
-    /* стрелка через SVG — работает в любом WebView */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
@@ -140,7 +165,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Имя выбранного файла (показывается при выборе ZIP)
+   Имя выбранного файла
    ═══════════════════════════════════════════════════════════ */
 .export-cards-filename {
     font-size: 0.78em;
@@ -158,14 +183,13 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Прогресс-блок — высота 8px, анимации
+   Прогресс-блок
    ═══════════════════════════════════════════════════════════ */
 .export-cards-progress-row {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-top: 2px;
-    /* плавное появление */
     animation: ecFadeIn 0.2s ease;
 }
 
@@ -176,7 +200,7 @@
 
 .export-cards-bar-wrap {
     flex: 1;
-    height: 8px;            /* увеличено с 5px — лучше видно на мобильных */
+    height: 8px;
     background: var(--SmartThemeBodyColor, rgba(255,255,255,0.1));
     border-radius: 99px;
     overflow: hidden;
@@ -192,7 +216,6 @@
     overflow: hidden;
 }
 
-/* shimmer-эффект пока идёт операция */
 .export-cards-bar-fill::after {
     content: '';
     position: absolute;
@@ -220,7 +243,6 @@
         color-mix(in srgb, var(--SmartThemeUserMesBlurTintColor, #5b9bd5) 70%, #8ec6f0));
 }
 
-/* Shimmer останавливается когда заполнено */
 .export-cards-bar-fill[style*="100%"]::after {
     animation: none;
 }
@@ -243,13 +265,12 @@
     gap: 6px;
     font-size: 0.8em;
     padding: 1px 2px;
-    min-height: 1.6em;      /* резерв — нет Layout Shift при появлении текста */
+    min-height: 1.6em;
     word-break: break-word;
     opacity: 0.85;
     transition: color 0.2s ease;
 }
 
-/* иконка слева от текста статуса */
 .export-cards-status-icon {
     flex-shrink: 0;
     width: 14px;
@@ -258,7 +279,6 @@
     font-size: 0.9em;
 }
 
-/* Спиннер для состояния «в процессе» */
 .export-cards-status-icon.spinning {
     animation: ecSpin 1s linear infinite;
 }
@@ -268,7 +288,6 @@
     to   { transform: rotate(360deg); }
 }
 
-/* Цвет статуса по состоянию */
 .export-cards-status[data-state="running"] .export-cards-status-icon { color: var(--SmartThemeQuoteColor, #4caf7d); }
 .export-cards-status[data-state="running-import"] .export-cards-status-icon { color: var(--SmartThemeUserMesBlurTintColor, #5b9bd5); }
 .export-cards-status[data-state="success"] { opacity: 1; }
@@ -294,7 +313,6 @@
     cursor: pointer;
     transition: opacity 0.15s ease, background 0.15s ease;
     min-height: 36px;
-    /* плавное появление */
     animation: ecFadeIn 0.25s ease;
 }
 
@@ -325,7 +343,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Подсказки к политике дублей (tooltip-like)
+   Подсказки к политике дублей
    ═══════════════════════════════════════════════════════════ */
 .export-cards-policy-hint {
     font-size: 0.73em;
@@ -338,7 +356,6 @@
 
 /* ═══════════════════════════════════════════════════════════
    Мобильная адаптация (≤ 600px)
-   Совпадает с breakpoint ST mobile-styles.css
    ═══════════════════════════════════════════════════════════ */
 @media screen and (max-width: 600px) {
     .export-cards-section {
@@ -347,7 +364,7 @@
     }
 
     #export-cards-settings .menu_button {
-        min-height: 48px;   /* Material Design 48dp */
+        min-height: 48px;
         font-size: 1em;
     }
 
@@ -361,7 +378,7 @@
     }
 
     .export-cards-bar-wrap {
-        height: 10px;       /* толще на мобильных */
+        height: 10px;
     }
 
     .export-cards-log-btn {
