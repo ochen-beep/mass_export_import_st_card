@@ -1,5 +1,5 @@
-// Export / Import Cards ZIP v1.7
-const MODULE_NAME = 'export_all_cards_zip';
+// ZIP Character Backup v1.8
+const MODULE_NAME = 'zip_character_backup';
 
 let abortExport      = false;
 let abortImport      = false;
@@ -24,7 +24,7 @@ const IS_RU = _stLang.startsWith('ru');
 
 const STRINGS = {
     // ── Заголовок панели ──
-    panelTitle:             { en: 'Export / Import Cards ZIP', ru: 'Экспорт / Импорт карточек ZIP' },
+    panelTitle:             { en: 'ZIP Character Backup', ru: 'ZIP Бэкап персонажей' },
 
     // ── Секции ──
     sectionExport:          { en: 'Export', ru: 'Экспорт' },
@@ -524,7 +524,7 @@ async function exportAllAsZip() {
 
     const ts     = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, -5);
     const sizeMB = (zipBlob.size / 1024 / 1024).toFixed(1);
-    await downloadBlob(zipBlob, `all_characters_${ts}.zip`);
+    await downloadBlob(zipBlob, `characters_backup_${ts}.zip`);
 
     const failedPart  = failed  > 0 ? t('statusDoneExportFailed', failed)  : '';
     const skippedPart = skipped > 0 ? t('statusDoneExportSkip',   skipped) : '';
@@ -875,7 +875,6 @@ function createUI() {
     });
 
     // Import: label[for] открывает файловый диалог нативно — не нужен программный .click()
-    // Обрабатываем только change на input
     $('#import-cards-file-input').on('change', async function () {
         const file = this.files[0];
         if (file) await importFromZip(file);
@@ -906,11 +905,11 @@ function createUI() {
         const { eventSource, event_types } = SillyTavern.getContext();
         eventSource.on(event_types.APP_READY, () => {
             createUI();
-            console.log(`[${MODULE_NAME}] Extension loaded (v1.7, lang: ${IS_RU ? 'ru' : 'en'}).`);
+            console.log(`[${MODULE_NAME}] Extension loaded (v1.8, lang: ${IS_RU ? 'ru' : 'en'}).`);
         });
     } catch (e) {
         console.warn(`[${MODULE_NAME}] APP_READY fallback:`, e);
         createUI();
-        console.log(`[${MODULE_NAME}] Extension loaded (v1.7, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
+        console.log(`[${MODULE_NAME}] Extension loaded (v1.8, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
     }
 })();

@@ -1,12 +1,12 @@
 {
-    "display_name": "Export / Import Cards ZIP",
+    "display_name": "ZIP Character Backup",
     "loading_order": 1,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "aceenvw",
-    "version": "1.7.0",
+    "author": "ochen-beep",
+    "version": "1.8.0",
     "homePage": "https://github.com/ochen-beep/mass_export_import_st_card",
     "auto_update": true
 }

@@ -1,10 +1,13 @@
-# Export / Import Cards ZIP
+# ZIP Character Backup
 
 SillyTavern extension for bulk export and import of character cards via ZIP.
 
 ## Installation
 
-Extensions → Install extension → paste this repository URL.
+Extensions → Install extension → paste this repository URL:
+```
+https://github.com/ochen-beep/mass_export_import_st_card
+```
 
 ## Usage
 
@@ -28,4 +31,4 @@ Both operations can be cancelled mid-way. If any cards fail, a **Download log** 
 
 ## Credits
 
-Original extension by **aceenvw**
+Original extension by **aceenvw**, reworked by **ochen-beep**
