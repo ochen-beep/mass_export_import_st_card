@@ -1,4 +1,4 @@
-// ZIP Character Backup v1.8
+// ZIP Character Backup v1.9
 const MODULE_NAME = 'zip_character_backup';
 
 let abortExport      = false;
@@ -13,14 +13,23 @@ const MAX_ZIP_WARN_MB = 200;
 // ═══════════════════════════════════════════════════════════
 // ─── i18n ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════
-const _stLang = (
-    localStorage.getItem('language')
-    || document.documentElement.lang
-    || navigator.language
-    || 'en'
-).toLowerCase();
 
-const IS_RU = _stLang.startsWith('ru');
+// Язык читается лениво — при первом обращении к t().
+// Это важно: IS_RU не должен вычисляться на уровне модуля,
+// потому что скрипт загружается ДО того как ST запишет язык
+// в localStorage (APP_READY ещё не случился).
+let _isRu = null;
+function getIsRu() {
+    if (_isRu !== null) return _isRu;
+    const lang = (
+        localStorage.getItem('language')
+        || document.documentElement.lang
+        || navigator.language
+        || 'en'
+    ).toLowerCase();
+    _isRu = lang.startsWith('ru');
+    return _isRu;
+}
 
 const STRINGS = {
     // ── Заголовок панели ──
@@ -123,8 +132,24 @@ function t(key, ...args) {
         console.warn(`[${MODULE_NAME}] Missing i18n key: "${key}"`);
         return key;
     }
-    let str = IS_RU ? (entry.ru || entry.en) : entry.en;
+    const isRu = getIsRu();
+    let str = isRu ? (entry.ru || entry.en) : entry.en;
     return str.replace(/\{(\d+)\}/g, (_, i) => args[i] ?? '');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ─── Настройки (extensionSettings) ──────────────────────────
+// ═══════════════════════════════════════════════════════════
+function getSettings() {
+    const ctx = SillyTavern.getContext();
+    if (!ctx.extensionSettings[MODULE_NAME]) {
+        ctx.extensionSettings[MODULE_NAME] = {};
+    }
+    return ctx.extensionSettings[MODULE_NAME];
+}
+
+function saveSettings() {
+    SillyTavern.getContext().saveSettingsDebounced();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -145,7 +170,7 @@ async function loadJSZip() {
             resolve(false);
         }, 10000);
 
-        script.onload = () => { clearTimeout(timer); jsZipLoaded = true; resolve(true); };
+        script.onload  = () => { clearTimeout(timer); jsZipLoaded = true; resolve(true); };
         script.onerror = () => { clearTimeout(timer); console.error(`[${MODULE_NAME}] Failed to load JSZip`); resolve(false); };
         document.head.appendChild(script);
     }).finally(() => { jsZipLoadPromise = null; });
@@ -741,14 +766,20 @@ async function importFromZip(file) {
 function createUI() {
     $('#export-cards-settings').remove();
 
+    // Читаем сохранённое состояние drawer (по умолчанию — открыт)
+    const settings   = getSettings();
+    const drawerOpen = settings.drawerOpen !== false; // undefined → true
+    const iconClass  = drawerOpen ? 'fa-circle-chevron-up up' : 'fa-circle-chevron-down down';
+    const contentStyle = drawerOpen ? '' : 'style="display:none;"';
+
     const html = `
         <div id="export-cards-settings">
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
                     <b>${t('panelTitle')}</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-up up"></div>
+                    <div class="inline-drawer-icon fa-solid ${iconClass}"></div>
                 </div>
-                <div class="inline-drawer-content">
+                <div class="inline-drawer-content" ${contentStyle}>
 
                     <!-- ══ EXPORT ══ -->
                     <div class="export-cards-section">
@@ -852,7 +883,18 @@ function createUI() {
     updatePolicyHint('export-cards');
     updatePolicyHint('import-cards');
 
-    // ── обработчики ──
+    // ── Сохранение состояния drawer ──────────────────────────
+    // ST диспатчит 'inline-drawer-toggle' на элементе .inline-drawer после toggle.
+    // Слушаем его и сохраняем состояние в extensionSettings.
+    $('#export-cards-settings .inline-drawer').on('inline-drawer-toggle', function () {
+        const icon   = this.querySelector('.inline-drawer-icon');
+        const isOpen = icon?.classList.contains('up') ?? true;
+        const s = getSettings();
+        s.drawerOpen = isOpen;
+        saveSettings();
+    });
+
+    // ── Обработчики ──────────────────────────────────────────
     $('#export-cards-btn').on('click', async function () {
         if ($(this).hasClass('disabled')) return;
         await exportAllAsZip();
@@ -874,7 +916,7 @@ function createUI() {
         }
     });
 
-    // Import: label[for] открывает файловый диалог нативно — не нужен программный .click()
+    // Import: label[for] открывает файловый диалог нативно
     $('#import-cards-file-input').on('change', async function () {
         const file = this.files[0];
         if (file) await importFromZip(file);
@@ -905,11 +947,11 @@ function createUI() {
         const { eventSource, event_types } = SillyTavern.getContext();
         eventSource.on(event_types.APP_READY, () => {
             createUI();
-            console.log(`[${MODULE_NAME}] Extension loaded (v1.8, lang: ${IS_RU ? 'ru' : 'en'}).`);
+            console.log(`[${MODULE_NAME}] Extension loaded (v1.9, lang: ${getIsRu() ? 'ru' : 'en'}).`);
         });
     } catch (e) {
         console.warn(`[${MODULE_NAME}] APP_READY fallback:`, e);
         createUI();
-        console.log(`[${MODULE_NAME}] Extension loaded (v1.8, fallback init, lang: ${IS_RU ? 'ru' : 'en'}).`);
+        console.log(`[${MODULE_NAME}] Extension loaded (v1.9, fallback init, lang: ${getIsRu() ? 'ru' : 'en'}).`);
     }
 })();
